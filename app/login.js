@@ -21,7 +21,14 @@ export default function LoginScreen() {
       router.replace('/(tabs)');
     } catch (err) {
       console.error('Google 로그인 실패:', err);
-      setError('Google 로그인에 실패했습니다. 다시 시도해주세요.');
+      // 에러 메시지에 따라 다른 메시지 표시
+      if (err.message?.includes('Firebase 설정') || err.message?.includes('초기화')) {
+        setError('Firebase 설정이 필요합니다.\n\n1. Firebase Console에서 프로젝트 생성\n2. Authentication > Sign-in method에서 Google 활성화\n3. src/config/firebase.js에 설정 정보 입력\n\n현재는 게스트 모드로 진행하세요.');
+      } else if (err.message?.includes('operation-not-allowed')) {
+        setError('Firebase Console에서 Google 인증을 활성화해주세요.');
+      } else {
+        setError(err.message || 'Google 로그인에 실패했습니다. 다시 시도해주세요.');
+      }
     } finally {
       setLoading(false);
     }

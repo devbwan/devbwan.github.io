@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { Card, Surface, Avatar, Divider, Chip } from 'react-native-paper';
+import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { Card, Surface, Avatar, Divider, Chip, Button } from 'react-native-paper';
+import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../src/stores/authStore';
+import { signOut } from '../../src/services/authService';
 import { getUserStats } from '../../src/db/statsRepository';
 import { getUserRewards } from '../../src/db/rewardsRepository';
 import { checkRewards } from '../../src/utils/rewardSystem';
 import { spacing, typography, colors } from '../../src/theme';
 
 export default function ProfileScreen() {
-  const { user, authProvider } = useAuthStore();
+  const router = useRouter();
+  const { user, authProvider, signOut: signOutStore } = useAuthStore();
   const [stats, setStats] = useState({
     totalRuns: 0,
     totalDistance: 0,
@@ -57,6 +60,34 @@ export default function ProfileScreen() {
   const formatSpeed = (kmh) => {
     if (!kmh || kmh === 0) return '-- km/h';
     return `${kmh.toFixed(1)} km/h`;
+  };
+
+  const handleSignOut = () => {
+    Alert.alert(
+      '로그아웃',
+      '정말 로그아웃하시겠습니까?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '로그아웃',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut();
+              signOutStore();
+              router.replace('/login');
+            } catch (error) {
+              console.error('로그아웃 오류:', error);
+              Alert.alert('오류', '로그아웃 중 오류가 발생했습니다.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleLogin = () => {
+    router.push('/login');
   };
 
   const userName = user?.name || '게스트';
@@ -178,16 +209,48 @@ export default function ProfileScreen() {
           </Card.Content>
         </Card>
 
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text style={styles.cardTitle}>업로드한 코스</Text>
-            <Text style={styles.courseText}>업로드한 코스가 없습니다.</Text>
-          </Card.Content>
-        </Card>
-      </View>
-    </ScrollView>
-  );
-}
+            <Card style={styles.card} mode="outlined">
+              <Card.Content>
+                <Text style={styles.cardTitle}>업로드한 코스</Text>
+                <Text style={styles.courseText}>업로드한 코스가 없습니다.</Text>
+              </Card.Content>
+            </Card>
+
+            {authProvider !== 'guest' ? (
+              <Card style={styles.card} mode="outlined">
+                <Card.Content>
+                  <Button
+                    mode="outlined"
+                    onPress={handleSignOut}
+                    style={styles.signOutButton}
+                    textColor={colors.error}
+                  >
+                    로그아웃
+                  </Button>
+                </Card.Content>
+              </Card>
+            ) : (
+              <Card style={styles.card} mode="outlined">
+                <Card.Content>
+                  <Text style={styles.cardTitle}>로그인</Text>
+                  <Text style={styles.loginText}>
+                    로그인하여 기록을 클라우드에 동기화하고 더 많은 기능을 이용하세요.
+                  </Text>
+                  <Button
+                    mode="contained"
+                    onPress={handleLogin}
+                    style={styles.loginButton}
+                    contentStyle={styles.loginButtonContent}
+                  >
+                    로그인하기
+                  </Button>
+                </Card.Content>
+              </Card>
+            )}
+          </View>
+        </ScrollView>
+      );
+    }
 
 const styles = StyleSheet.create({
   container: {
@@ -334,10 +397,27 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 4,
   },
-  emptyText: {
-    fontSize: typography.fontSize.md,
-    color: '#666',
-    textAlign: 'center',
-    paddingVertical: spacing.md,
-  },
-});
+      emptyText: {
+        fontSize: typography.fontSize.md,
+        color: '#666',
+        textAlign: 'center',
+        paddingVertical: spacing.md,
+      },
+      signOutButton: {
+        marginTop: spacing.md,
+        borderColor: colors.error,
+      },
+      loginButton: {
+        marginTop: spacing.md,
+        borderRadius: 16,
+      },
+      loginButtonContent: {
+        paddingVertical: spacing.sm,
+      },
+      loginText: {
+        fontSize: typography.fontSize.sm,
+        color: '#666',
+        marginTop: spacing.sm,
+        lineHeight: 20,
+      },
+    });
