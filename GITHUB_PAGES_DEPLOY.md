@@ -42,6 +42,20 @@ npm run deploy
 - **빌드 디렉토리**: `web-build`
 - **GitHub 브랜치**: `gh-pages` (자동 생성)
 
+## ⚠️ 중요: GitHub Pages Source 설정
+
+배포 후 **반드시 GitHub 저장소 설정을 변경**해야 합니다:
+
+1. https://github.com/devbwan/RunningApp 접속
+2. **Settings** > **Pages** 메뉴 클릭
+3. **Source** 설정:
+   - **Deploy from a branch** 선택
+   - **Branch**: `gh-pages` 선택 ⚠️ (현재 `master`로 되어 있으면 변경 필요)
+   - **Folder**: `/ (root)` 선택
+4. **Save** 클릭
+
+자세한 내용은 [GITHUB_PAGES_CONFIG.md](./GITHUB_PAGES_CONFIG.md) 참고
+
 ## 🔧 문제 해결
 
 ### 빌드 실패 시
