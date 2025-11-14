@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "184251732263",
+    "project_id": "runningapp-a0bff",
+    "storage_bucket": "runningapp-a0bff.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:184251732263:android:ef7e2f972a0e29da965902",
+        "android_client_info": {
+          "package_name": "com.runwave.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "184251732263-83kt98h7ceiervojh7ial5e35d5oq290.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCO5DB-x_bkLxyabKiEGm3bnW-3d8hTero"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "184251732263-83kt98h7ceiervojh7ial5e35d5oq290.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

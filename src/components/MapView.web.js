@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
 // 웹 전용 플레이스홀더 컴포넌트
-export function RunMapView({ route = [], currentLocation = null }) {
+export function RunMapView({ route = [], currentLocation = null, initialLocation = null }) {
   return (
     <View style={styles.webContainer}>
       <View style={styles.webPlaceholder}>

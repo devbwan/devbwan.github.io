@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Platform, Alert, TouchableOpacity } from 'react-native';
 import { Button, Card, Surface, IconButton } from 'react-native-paper';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import * as Location from 'expo-location';
 import * as Speech from 'expo-speech';
 import { useLocationPermission } from '../../src/hooks/useLocationPermission';
 import { useRunningTracker } from '../../src/hooks/useRunningTracker';
@@ -29,7 +30,31 @@ export default function RunScreen() {
   const [courseMode, setCourseMode] = useState(false);
   const [courseRoute, setCourseRoute] = useState([]);
   const [voiceGuideEnabled, setVoiceGuideEnabled] = useState(true);
+  const [initialLocation, setInitialLocation] = useState(null);
   const lastAnnouncedKm = useRef(0);
+
+  // 러닝 탭 진입 시 현재 위치 가져오기
+  useFocusEffect(
+    React.useCallback(() => {
+      const getCurrentLocation = async () => {
+        if (!granted) return;
+        
+        try {
+          const location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          setInitialLocation({
+            lat: location.coords.latitude,
+            lng: location.coords.longitude,
+          });
+        } catch (error) {
+          console.error('[Run] 현재 위치 가져오기 실패:', error);
+        }
+      };
+
+      getCurrentLocation();
+    }, [granted])
+  );
 
   // 코스 모드 확인
   useEffect(() => {
@@ -114,7 +139,7 @@ export default function RunScreen() {
       const cal = calculateCalories(distance, duration);
       setCalories(cal);
       
-      // 캐던스 업데이트
+      // 케이던스 업데이트
       useRunStore.getState().updateCadence();
     } else if (!isRunning) {
       setAvgPace(0);
@@ -454,7 +479,8 @@ export default function RunScreen() {
           <View style={styles.mapContainer}>
             <RunMapView 
               route={isRunning ? route : (courseMode ? courseRoute : [])} 
-              currentLocation={isRunning} 
+              currentLocation={isRunning || initialLocation} 
+              initialLocation={initialLocation}
             />
             {courseMode && !isRunning && (
               <View style={styles.courseModeBadge}>
@@ -498,7 +524,7 @@ export default function RunScreen() {
                   <Text style={styles.statValue}>{calories} kcal</Text>
                 </View>
                 <View style={styles.statItem}>
-                  <Text style={styles.statLabel}>캐던스</Text>
+                  <Text style={styles.statLabel}>케이던스</Text>
                   <Text style={styles.statValue}>{formatCadence(cadence)} spm</Text>
                 </View>
               </View>

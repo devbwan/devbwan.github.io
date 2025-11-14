@@ -3,8 +3,37 @@ import { StyleSheet, View } from 'react-native';
 import MapView from 'react-native-maps';
 import { Marker, Polyline } from 'react-native-maps';
 
-export function RunMapView({ route = [], currentLocation = null }) {
+export function RunMapView({ route = [], currentLocation = null, initialLocation = null }) {
   const mapRef = useRef(null);
+  const [region, setRegion] = React.useState(null);
+
+  // 초기 region 계산
+  React.useEffect(() => {
+    if (route.length > 0) {
+      const first = route[0];
+      setRegion({
+        latitude: first.lat,
+        longitude: first.lng,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      });
+    } else if (initialLocation) {
+      setRegion({
+        latitude: initialLocation.lat,
+        longitude: initialLocation.lng,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      });
+    } else {
+      // 서울 기본 위치
+      setRegion({
+        latitude: 37.5665,
+        longitude: 126.978,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      });
+    }
+  }, [route, initialLocation]);
 
   useEffect(() => {
     if (route.length > 0 && mapRef.current) {
@@ -20,37 +49,34 @@ export function RunMapView({ route = [], currentLocation = null }) {
           animated: true,
         });
       }
-    }
-  }, [route]);
-
-  const getInitialRegion = () => {
-    if (route.length > 0) {
-      const first = route[0];
-      return {
-        latitude: first.lat,
-        longitude: first.lng,
+    } else if (initialLocation && mapRef.current && route.length === 0) {
+      // 경로가 없고 초기 위치가 있으면 현재 위치로 지도 이동
+      const newRegion = {
+        latitude: initialLocation.lat,
+        longitude: initialLocation.lng,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
       };
+      setRegion(newRegion);
+      mapRef.current.animateToRegion(newRegion, 500);
     }
-    // 서울 기본 위치
-    return {
-      latitude: 37.5665,
-      longitude: 126.978,
-      latitudeDelta: 0.05,
-      longitudeDelta: 0.05,
-    };
-  };
+  }, [route, initialLocation]);
+
+  if (!region) {
+    return <View style={styles.container} />;
+  }
 
   return (
     <View style={styles.container}>
       <MapView
         ref={mapRef}
         style={styles.map}
-        initialRegion={getInitialRegion()}
+        initialRegion={region}
+        region={region}
         showsUserLocation={!!currentLocation}
         showsMyLocationButton={false}
         followsUserLocation={!!currentLocation && !route.length}
+        loadingEnabled={true}
       >
         {route.length > 1 && (
           <Polyline

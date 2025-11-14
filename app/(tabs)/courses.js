@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, FlatList, ActivityIndicator, Alert, TextInput, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, FlatList, ActivityIndicator, Alert, TextInput, TouchableOpacity, Platform, BackHandler } from 'react-native';
 import { Card, Button, Searchbar, Chip, Dialog, Portal, RadioButton, Divider } from 'react-native-paper';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { getAllCourses, getTop3Courses, createCourse } from '../../src/services/courseService';
@@ -35,6 +35,28 @@ export default function CoursesScreen() {
   useEffect(() => {
     console.log('[Courses] importDialogVisible 상태 변경:', importDialogVisible);
   }, [importDialogVisible]);
+
+  // 뒤로가기 버튼 처리 - 팝업이 열려있을 때만 팝업 닫기
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      // 업로드 다이얼로그가 열려있으면 닫기
+      if (uploadDialogVisible && !uploading) {
+        setUploadDialogVisible(false);
+        return true; // 이벤트 소비
+      }
+      // 가져오기 다이얼로그가 열려있으면 닫기
+      if (importDialogVisible && !importingOSM && !importingGPX) {
+        setImportDialogVisible(false);
+        setGpxUrl('');
+        setGpxFileContent('');
+        return true; // 이벤트 소비
+      }
+      // 팝업이 없으면 기본 동작 (페이지 이동 허용)
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [uploadDialogVisible, importDialogVisible, uploading, importingOSM, importingGPX]);
 
   // 러닝 종료 후 코스 업로드 파라미터 처리
   useEffect(() => {

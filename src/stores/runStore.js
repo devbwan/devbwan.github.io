@@ -50,7 +50,7 @@ export const useRunStore = create((set) => ({
     const now = Date.now();
     set((s) => {
       const newStepCount = s.stepCount + 1;
-      // 최근 60초 동안의 걸음 수로 캐던스 계산
+      // 최근 60초 동안의 걸음 수로 케이던스 계산
       let cadence = 0;
       if (s.lastStepTime && now - s.lastStepTime < 60000) {
         // 간단한 추정: 거리와 속도 기반으로 걸음 수 추정
@@ -68,7 +68,7 @@ export const useRunStore = create((set) => ({
     });
   },
   updateCadence: () => {
-    // 거리 기반 캐던스 추정 (더 정확한 방법)
+    // 거리 기반 케이던스 추정 (더 정확한 방법)
     set((s) => {
       if (s.duration > 0 && s.distance > 0) {
         // 일반적으로 1km당 약 1200-1500보
