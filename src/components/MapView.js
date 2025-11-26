@@ -5,7 +5,13 @@ import { Marker, Polyline } from 'react-native-maps';
 
 export function RunMapView({ route = [], currentLocation = null, initialLocation = null }) {
   const mapRef = useRef(null);
-  const [region, setRegion] = React.useState(null);
+  // 기본 위치(서울)로 초기화
+  const [region, setRegion] = React.useState({
+    latitude: 37.5665,
+    longitude: 126.978,
+    latitudeDelta: 0.05,
+    longitudeDelta: 0.05,
+  });
 
   // 초기 region 계산
   React.useEffect(() => {
@@ -25,7 +31,7 @@ export function RunMapView({ route = [], currentLocation = null, initialLocation
         longitudeDelta: 0.01,
       });
     } else {
-      // 서울 기본 위치
+      // 서울 기본 위치 (즉시 설정)
       setRegion({
         latitude: 37.5665,
         longitude: 126.978,
@@ -62,21 +68,26 @@ export function RunMapView({ route = [], currentLocation = null, initialLocation
     }
   }, [route, initialLocation]);
 
-  if (!region) {
-    return <View style={styles.container} />;
-  }
-
   return (
     <View style={styles.container}>
       <MapView
         ref={mapRef}
         style={styles.map}
+        provider="google"
         initialRegion={region}
         region={region}
         showsUserLocation={!!currentLocation}
         showsMyLocationButton={false}
         followsUserLocation={!!currentLocation && !route.length}
         loadingEnabled={true}
+        onMapReady={() => {
+          if (__DEV__) {
+            console.log('[MapView] 지도가 준비되었습니다.');
+          }
+        }}
+        onError={(error) => {
+          console.error('[MapView] 지도 오류:', error);
+        }}
       >
         {route.length > 1 && (
           <Polyline

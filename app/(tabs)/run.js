@@ -20,7 +20,7 @@ import { spacing, typography, colors } from '../../src/theme';
 export default function RunScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { granted, status } = useLocationPermission();
+  const { granted, status, loading: permissionLoading } = useLocationPermission();
   const { start, pause, resume, stop } = useRunningTracker();
   const { isRunning, isPaused, distance, duration, pace, maxSpeed, route, startTime, cadence } = useRunStore();
   const [avgPace, setAvgPace] = useState(0);
@@ -31,29 +31,56 @@ export default function RunScreen() {
   const [courseRoute, setCourseRoute] = useState([]);
   const [voiceGuideEnabled, setVoiceGuideEnabled] = useState(true);
   const [initialLocation, setInitialLocation] = useState(null);
+  const [locationLoading, setLocationLoading] = useState(false);
   const lastAnnouncedKm = useRef(0);
 
   // 러닝 탭 진입 시 현재 위치 가져오기
   useFocusEffect(
     React.useCallback(() => {
       const getCurrentLocation = async () => {
-        if (!granted) return;
+        if (!granted) {
+          // 권한이 없으면 기본 위치(서울) 사용
+          setInitialLocation({
+            lat: 37.5665,
+            lng: 126.978,
+          });
+          return;
+        }
         
+        setLocationLoading(true);
         try {
-          const location = await Location.getCurrentPositionAsync({
+          // 타임아웃 설정 (10초)
+          const locationPromise = Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
           });
+          
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('위치 정보 요청 시간 초과')), 10000);
+          });
+          
+          const location = await Promise.race([locationPromise, timeoutPromise]);
+          
           setInitialLocation({
             lat: location.coords.latitude,
             lng: location.coords.longitude,
           });
         } catch (error) {
           console.error('[Run] 현재 위치 가져오기 실패:', error);
+          // 실패 시 기본 위치(서울) 사용
+          setInitialLocation({
+            lat: 37.5665,
+            lng: 126.978,
+          });
+        } finally {
+          setLocationLoading(false);
         }
       };
 
-      getCurrentLocation();
-    }, [granted])
+      // 권한 확인이 완료된 후에만 위치 가져오기
+      if (permissionLoading === false) {
+        getCurrentLocation();
+      }
+    }, [granted, permissionLoading])
   );
 
   // 코스 모드 확인
@@ -472,15 +499,26 @@ export default function RunScreen() {
     }
   };
 
+  // 로딩 중일 때 표시
+  if (permissionLoading || locationLoading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>위치 정보를 가져오는 중...</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      {granted ? (
+      {granted !== false ? (
         <>
           <View style={styles.mapContainer}>
             <RunMapView 
               route={isRunning ? route : (courseMode ? courseRoute : [])} 
               currentLocation={isRunning || initialLocation} 
-              initialLocation={initialLocation}
+              initialLocation={initialLocation || { lat: 37.5665, lng: 126.978 }}
             />
             {courseMode && !isRunning && (
               <View style={styles.courseModeBadge}>
@@ -707,6 +745,17 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: typography.fontSize.sm,
     color: '#666',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  loadingText: {
+    fontSize: typography.fontSize.md,
+    color: '#666',
+    textAlign: 'center',
   },
   courseModeBadge: {
     position: 'absolute',

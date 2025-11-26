@@ -54,12 +54,7 @@
       "expo-router",
       "expo-sqlite",
       "expo-web-browser",
-      [
-        "react-native-maps",
-        {
-          "googleMapsApiKey": "AIzaSyCO5DB-x_bkLxyabKiEGm3bnW-3d8hTero"
-        }
-      ]
+      "./plugins/withGoogleMapsApiKey.js"
     ],
     "extra": {
       "router": {},

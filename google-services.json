@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "184251732263-lfhppnmo7nhn7i2gakpdshs51pqfeqoo.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.runwave.app",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
           "client_id": "184251732263-83kt98h7ceiervojh7ial5e35d5oq290.apps.googleusercontent.com",
           "client_type": 3
         }

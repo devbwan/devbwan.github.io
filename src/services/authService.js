@@ -13,6 +13,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { Platform } from 'react-native';
+import * as AuthSession from 'expo-auth-session';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -87,9 +88,119 @@ export const signInWithGoogle = async () => {
         throw popupError;
       }
     } else {
-      // 모바일 환경에서는 expo-auth-session 사용 필요
-      // 현재는 기본 구조만 제공
-      throw new Error('모바일에서는 Firebase 설정 후 Google 로그인이 활성화됩니다.');
+      // 모바일 환경 (Android/iOS)에서는 Web Browser를 통해 Firebase OAuth 사용
+      const redirectUri = AuthSession.makeRedirectUri({
+        scheme: 'runwave',
+        path: 'auth',
+      });
+
+      if (__DEV__) {
+        console.log('[Auth] 모바일 Google 로그인 시작');
+        console.log('[Auth] Redirect URI:', redirectUri);
+      }
+
+      const authDomain = process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || 
+                        'runningapp-a0bff.firebaseapp.com';
+      const apiKey = process.env.EXPO_PUBLIC_FIREBASE_API_KEY;
+      
+      if (!apiKey) {
+        throw new Error('Firebase API 키가 설정되지 않았습니다.\n\n.env.android 파일에 EXPO_PUBLIC_FIREBASE_API_KEY를 추가하세요.');
+      }
+
+      // Firebase OAuth URL 생성 (redirect 방식)
+      const firebaseAuthUrl = `https://${authDomain}/__/auth/handler?` +
+        `apiKey=${encodeURIComponent(apiKey)}&` +
+        `authType=signInWithRedirect&` +
+        `provider=google.com&` +
+        `redirectUrl=${encodeURIComponent(redirectUri)}&` +
+        `v=9`;
+
+      if (__DEV__) {
+        console.log('[Auth] Firebase OAuth URL:', firebaseAuthUrl);
+      }
+
+      // Web Browser로 Firebase OAuth 실행
+      const browserResult = await WebBrowser.openAuthSessionAsync(
+        firebaseAuthUrl,
+        redirectUri
+      );
+
+      if (browserResult.type === 'cancel') {
+        throw new Error('로그인이 취소되었습니다.');
+      }
+
+      if (browserResult.type === 'error') {
+        console.error('[Auth] OAuth 오류:', browserResult.error);
+        throw new Error(`로그인 오류: ${browserResult.error?.message || '알 수 없는 오류'}`);
+      }
+
+      if (browserResult.type === 'success' && browserResult.url) {
+        // URL에서 인증 결과 파싱
+        try {
+          const url = new URL(browserResult.url);
+          const authToken = url.searchParams.get('authToken') || 
+                          url.searchParams.get('id_token') ||
+                          url.hash?.split('id_token=')[1]?.split('&')[0];
+          const error = url.searchParams.get('error') || 
+                       url.searchParams.get('error_description');
+
+          if (error) {
+            throw new Error(`로그인 오류: ${error}`);
+          }
+
+          if (authToken) {
+            // Firebase Auth에 ID 토큰으로 로그인
+            // Google ID 토큰을 Firebase credential로 변환
+            const credential = GoogleAuthProvider.credential(authToken);
+            const result = await signInWithCredential(auth, credential);
+            
+            const user = {
+              id: result.user.uid,
+              email: result.user.email,
+              name: result.user.displayName,
+              photoURL: result.user.photoURL,
+            };
+
+            await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+            await AsyncStorage.setItem(AUTH_PROVIDER_KEY, 'google');
+
+            if (__DEV__) {
+              console.log('[Auth] Google 로그인 성공:', user);
+            }
+
+            return user;
+          }
+
+          // URL에 토큰이 없는 경우, redirect 결과 확인
+          // Firebase는 redirect 후 getRedirectResult로 결과를 가져올 수 있음
+          try {
+            const redirectResult = await getRedirectResult(auth);
+            if (redirectResult) {
+              const user = {
+                id: redirectResult.user.uid,
+                email: redirectResult.user.email,
+                name: redirectResult.user.displayName,
+                photoURL: redirectResult.user.photoURL,
+              };
+              await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+              await AsyncStorage.setItem(AUTH_PROVIDER_KEY, 'google');
+              return user;
+            }
+          } catch (redirectError) {
+            if (__DEV__) {
+              console.log('[Auth] Redirect 결과 없음:', redirectError);
+            }
+          }
+
+          throw new Error('인증 토큰을 받지 못했습니다. 다시 시도해주세요.');
+        } catch (parseError) {
+          console.error('[Auth] URL 파싱 오류:', parseError);
+          console.error('[Auth] URL:', browserResult.url);
+          throw new Error('인증 결과를 처리하는 중 오류가 발생했습니다.');
+        }
+      }
+
+      throw new Error('알 수 없는 인증 결과입니다.');
     }
   } catch (error) {
     console.error('Google 로그인 오류:', error);
