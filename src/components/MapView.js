@@ -1,10 +1,13 @@
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Text, ActivityIndicator } from 'react-native';
 import MapView from 'react-native-maps';
 import { Marker, Polyline } from 'react-native-maps';
 
 export function RunMapView({ route = [], currentLocation = null, initialLocation = null }) {
   const mapRef = useRef(null);
+  const [mapReady, setMapReady] = React.useState(false);
+  const [mapError, setMapError] = React.useState(null);
+  
   // 기본 위치(서울)로 초기화
   const [region, setRegion] = React.useState({
     latitude: 37.5665,
@@ -12,6 +15,18 @@ export function RunMapView({ route = [], currentLocation = null, initialLocation
     latitudeDelta: 0.05,
     longitudeDelta: 0.05,
   });
+
+  // 컴포넌트 마운트 시 로그
+  React.useEffect(() => {
+    if (__DEV__) {
+      console.log('[MapView] 컴포넌트 마운트됨', {
+        hasRoute: route.length > 0,
+        hasInitialLocation: !!initialLocation,
+        hasCurrentLocation: !!currentLocation,
+        region,
+      });
+    }
+  }, []);
 
   // 초기 region 계산
   React.useEffect(() => {
@@ -70,9 +85,22 @@ export function RunMapView({ route = [], currentLocation = null, initialLocation
 
   return (
     <View style={styles.container}>
+      {mapError && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>
+            지도 로드 오류: {mapError?.message || '알 수 없는 오류'}
+          </Text>
+        </View>
+      )}
+      {!mapReady && !mapError && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6200ee" />
+          <Text style={styles.loadingText}>지도를 불러오는 중...</Text>
+        </View>
+      )}
       <MapView
         ref={mapRef}
-        style={styles.map}
+        style={[styles.map, !mapReady && styles.mapHidden]}
         provider="google"
         initialRegion={region}
         region={region}
@@ -81,12 +109,26 @@ export function RunMapView({ route = [], currentLocation = null, initialLocation
         followsUserLocation={!!currentLocation && !route.length}
         loadingEnabled={true}
         onMapReady={() => {
+          setMapReady(true);
+          setMapError(null);
           if (__DEV__) {
-            console.log('[MapView] 지도가 준비되었습니다.');
+            console.log('[MapView] 지도가 준비되었습니다.', { region });
           }
         }}
         onError={(error) => {
+          setMapError(error);
           console.error('[MapView] 지도 오류:', error);
+          if (__DEV__) {
+            console.error('[MapView] 오류 상세:', {
+              message: error?.message,
+              nativeEvent: error?.nativeEvent,
+            });
+          }
+        }}
+        onLoad={() => {
+          if (__DEV__) {
+            console.log('[MapView] 지도 로드 완료');
+          }
         }}
       >
         {route.length > 1 && (
@@ -127,8 +169,42 @@ export function RunMapView({ route = [], currentLocation = null, initialLocation
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#f0f0f0',
   },
   map: {
     flex: 1,
+  },
+  mapHidden: {
+    opacity: 0,
+  },
+  loadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    zIndex: 1,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 10,
+  },
+  errorContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+    backgroundColor: '#ffebee',
+    zIndex: 2,
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#c62828',
+    textAlign: 'center',
   },
 });

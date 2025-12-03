@@ -8,7 +8,7 @@ import {
   getRedirectResult,
   OAuthProvider,
 } from 'firebase/auth';
-import { auth, isValidFirebaseConfig } from '../config/firebase';
+import { auth, isValidFirebaseConfig, firebaseConfig } from '../config/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
@@ -29,6 +29,12 @@ export const signInWithGoogle = async () => {
 
   if (!auth) {
     throw new Error('Firebase Auth가 초기화되지 않았습니다. Firebase 설정을 확인하세요.');
+  }
+
+  // auth.app이 존재하는지 확인 (Firebase 함수들이 내부적으로 사용)
+  if (auth && !auth.app) {
+    console.error('[Auth] auth.app이 없습니다. Firebase 초기화를 확인하세요.');
+    throw new Error('Firebase Auth가 제대로 초기화되지 않았습니다. 앱을 재시작해주세요.');
   }
 
   try {
@@ -89,44 +95,160 @@ export const signInWithGoogle = async () => {
       }
     } else {
       // 모바일 환경 (Android/iOS)에서는 Web Browser를 통해 Firebase OAuth 사용
+      console.log('[Auth] ========== 모바일 Google 로그인 시작 ==========');
+      
       const redirectUri = AuthSession.makeRedirectUri({
         scheme: 'runwave',
         path: 'auth',
       });
 
-      if (__DEV__) {
-        console.log('[Auth] 모바일 Google 로그인 시작');
-        console.log('[Auth] Redirect URI:', redirectUri);
-      }
+      console.log('[Auth] Redirect URI:', redirectUri);
+      console.log('[Auth] Platform.OS:', Platform.OS);
 
-      const authDomain = process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || 
-                        'runningapp-a0bff.firebaseapp.com';
-      const apiKey = process.env.EXPO_PUBLIC_FIREBASE_API_KEY;
+      // firebase.js의 설정 사용 (google-services.json과 일치)
+      const authDomain = firebaseConfig.authDomain;
+      const apiKey = firebaseConfig.apiKey;
+      
+      // webClientId 가져오기 (웹용 OAuth Client ID)
+      // google-services.json의 client_type: 3 (웹용) 클라이언트 ID 사용
+      // ⚠️ React Native/Expo에서는 런타임에 파일을 읽을 수 없으므로 하드코딩된 올바른 값 사용
+      // google-services.json의 client_type: 3 값: 184251732263-83kt98h7ceiervojh7ial5e35d5oq290.apps.googleusercontent.com
+      // ⚠️ 환경 변수는 무시 (잘못된 값이 있을 수 있음)
+      
+      // 올바른 webClientId (google-services.json의 client_type: 3 값)
+      // 이 값은 google-services.json과 일치해야 합니다
+      const correctWebClientId = '184251732263-83kt98h7ceiervojh7ial5e35d5oq290.apps.googleusercontent.com';
+      
+      // 환경 변수 확인 (디버깅용)
+      const envWebClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB;
+      if (envWebClientId && envWebClientId !== correctWebClientId) {
+        console.warn('[Auth] ⚠️ 환경 변수에 잘못된 webClientId가 설정되어 있습니다.');
+        console.warn('[Auth] 환경 변수 값:', envWebClientId.substring(0, 30) + '...');
+        console.warn('[Auth] 올바른 값:', correctWebClientId.substring(0, 30) + '...');
+        console.warn('[Auth] 환경 변수는 무시하고 올바른 값을 사용합니다.');
+      }
+      
+      // 올바른 값 사용 (google-services.json의 client_type: 3)
+      // ⚠️ 항상 올바른 값 사용 (환경 변수 무시)
+      const webClientId = correctWebClientId;
+      console.log('[Auth] ✅ 올바른 webClientId 사용:', webClientId.substring(0, 30) + '...');
+      console.log('[Auth] webClientId 전체:', webClientId);
+      
+      console.log('[Auth] firebaseConfig 확인:', {
+        apiKey: apiKey ? `${apiKey.substring(0, 10)}...` : '없음',
+        authDomain: authDomain,
+        projectId: firebaseConfig.projectId,
+        webClientId: webClientId ? `${webClientId.substring(0, 20)}...` : '없음',
+      });
       
       if (!apiKey) {
-        throw new Error('Firebase API 키가 설정되지 않았습니다.\n\n.env.android 파일에 EXPO_PUBLIC_FIREBASE_API_KEY를 추가하세요.');
+        throw new Error('Firebase API 키가 설정되지 않았습니다.\n\nfirebase.js의 설정을 확인하세요.');
+      }
+      
+      // webClientId는 항상 올바른 값으로 설정되므로 체크 불필요
+      // 하지만 명확성을 위해 로그만 남김
+      if (webClientId !== correctWebClientId) {
+        console.error('[Auth] ❌ webClientId가 올바르지 않습니다!');
+        console.error('[Auth] 예상:', correctWebClientId);
+        console.error('[Auth] 실제:', webClientId);
+        throw new Error('webClientId가 올바르지 않습니다. 코드를 확인하세요.');
+      }
+      
+      // google-services.json과 일치하는지 확인
+      const expectedApiKey = 'AIzaSyCO5DB-x_bkLxyabKiEGm3bnW-3d8hTero';
+      if (apiKey !== expectedApiKey) {
+        console.warn('[Auth] ⚠️ API 키가 google-services.json과 일치하지 않습니다!');
+        console.warn('[Auth] 예상:', expectedApiKey);
+        console.warn('[Auth] 실제:', apiKey);
       }
 
       // Firebase OAuth URL 생성 (redirect 방식)
+      // webClientId는 필수입니다! 없으면 "The requested action is invalid" 오류 발생
+      // 참고: custom URL scheme (runwave://)은 Authorized domains에 추가할 필요 없음
       const firebaseAuthUrl = `https://${authDomain}/__/auth/handler?` +
         `apiKey=${encodeURIComponent(apiKey)}&` +
         `authType=signInWithRedirect&` +
         `provider=google.com&` +
         `redirectUrl=${encodeURIComponent(redirectUri)}&` +
+        `webClientId=${encodeURIComponent(webClientId)}&` +
         `v=9`;
 
-      if (__DEV__) {
-        console.log('[Auth] Firebase OAuth URL:', firebaseAuthUrl);
-      }
+      console.log('[Auth] Firebase OAuth URL:', firebaseAuthUrl);
+      console.log('[Auth] Redirect URI:', redirectUri);
+      console.log('[Auth] API Key:', apiKey ? `${apiKey.substring(0, 10)}...` : '없음');
+      console.log('[Auth] Auth Domain:', authDomain);
 
       // Web Browser로 Firebase OAuth 실행
-      const browserResult = await WebBrowser.openAuthSessionAsync(
-        firebaseAuthUrl,
-        redirectUri
-      );
+      console.log('[Auth] WebBrowser.openAuthSessionAsync 호출 전');
+      console.log('[Auth] URL:', firebaseAuthUrl.substring(0, 200) + '...');
+      console.log('[Auth] Redirect URI:', redirectUri);
+      
+      let browserResult;
+      try {
+        // 타임아웃과 함께 브라우저 열기 (5분 타임아웃)
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            console.error('[Auth] 타임아웃 발생: 브라우저가 5분 동안 결과를 반환하지 않았습니다.');
+            reject(new Error('로그인 타임아웃: 브라우저가 너무 오래 열려있습니다.'));
+          }, 5 * 60 * 1000); // 5분
+        });
 
-      if (browserResult.type === 'cancel') {
-        throw new Error('로그인이 취소되었습니다.');
+        console.log('[Auth] 브라우저 열기 시작...');
+        console.log('[Auth] Promise.race 시작...');
+        
+        const browserPromise = WebBrowser.openAuthSessionAsync(
+          firebaseAuthUrl,
+          redirectUri
+        );
+        
+        console.log('[Auth] WebBrowser.openAuthSessionAsync Promise 생성 완료');
+        console.log('[Auth] Promise.race 대기 중...');
+        
+        browserResult = await Promise.race([
+          browserPromise,
+          timeoutPromise
+        ]);
+        
+        console.log('[Auth] Promise.race 완료!');
+        console.log('[Auth] ========== Browser 결과 ==========');
+        console.log('[Auth] Browser 결과 타입:', browserResult?.type);
+        console.log('[Auth] Browser 결과 URL:', browserResult?.url ? browserResult.url.substring(0, 200) + '...' : '없음');
+        console.log('[Auth] Browser 결과 오류:', browserResult?.error);
+        console.log('[Auth] Browser 결과 전체:', JSON.stringify(browserResult, null, 2));
+        
+        // 결과가 없거나 undefined인 경우
+        if (!browserResult) {
+          console.error('[Auth] 브라우저 결과가 없습니다 (undefined 또는 null)');
+          throw new Error('브라우저에서 결과를 받지 못했습니다. 다시 시도해주세요.');
+        }
+      } catch (browserError) {
+        console.error('[Auth] ========== WebBrowser 오류 발생 ==========');
+        console.error('[Auth] WebBrowser.openAuthSessionAsync 오류:', browserError);
+        console.error('[Auth] 오류 상세:', {
+          message: browserError?.message,
+          code: browserError?.code,
+          name: browserError?.name,
+          stack: browserError?.stack,
+        });
+        
+        // 브라우저가 열리지 않는 경우 더 친절한 에러 메시지
+        if (browserError?.message?.includes('timeout') || browserError?.message?.includes('타임아웃')) {
+          throw new Error('로그인 타임아웃: 브라우저가 너무 오래 열려있습니다. 다시 시도해주세요.');
+        } else if (browserError?.code === 'ERR_INVALID_URL' || browserError?.message?.includes('URL')) {
+          console.error('[Auth] URL 형식 오류:', firebaseAuthUrl);
+          throw new Error('로그인 URL이 올바르지 않습니다. Firebase 설정을 확인하세요.');
+        } else {
+          throw new Error(`브라우저 오류: ${browserError?.message || '알 수 없는 오류'}\n\nFirebase Console 설정을 확인하세요.`);
+        }
+      }
+
+      if (browserResult.type === 'cancel' || browserResult.type === 'dismiss') {
+        console.error('[Auth] 브라우저가 닫혔습니다:', {
+          type: browserResult.type,
+          url: browserResult.url,
+          error: browserResult.error,
+        });
+        throw new Error('로그인이 취소되었습니다.\n\n브라우저에서 로그인을 완료한 후 브라우저를 닫지 마세요. 자동으로 앱으로 돌아갑니다.');
       }
 
       if (browserResult.type === 'error') {
@@ -137,45 +259,102 @@ export const signInWithGoogle = async () => {
       if (browserResult.type === 'success' && browserResult.url) {
         // URL에서 인증 결과 파싱
         try {
+          if (__DEV__) {
+            console.log('[Auth] Success URL 파싱 시작:', browserResult.url);
+          }
+          
+          // "The requested action is invalid" 오류 확인
+          if (browserResult.url.includes('error') || 
+              browserResult.url.includes('invalid') ||
+              browserResult.url.includes('__/auth/error')) {
+            console.error('[Auth] Firebase OAuth 오류 URL 감지:', browserResult.url);
+            throw new Error(
+              'Firebase OAuth 오류가 발생했습니다.\n\n' +
+              '가능한 원인:\n' +
+              '1. Firebase Console > Authentication > Sign-in method에서 Google이 "사용" 상태인지 확인\n' +
+              '2. Google Cloud Console > API 및 서비스 > 인증 정보에서 API 키 제한 확인\n' +
+              '3. Firebase Console > 프로젝트 설정에서 SHA-1 인증서 지문이 등록되어 있는지 확인\n\n' +
+              '자세한 내용은 FIREBASE_INVALID_ACTION_FIX.md 파일을 참고하세요.'
+            );
+          }
+          
           const url = new URL(browserResult.url);
+          
+          // URL의 모든 파라미터 로깅
+          if (__DEV__) {
+            console.log('[Auth] URL 파라미터:', {
+              search: url.search,
+              hash: url.hash,
+              pathname: url.pathname,
+              allParams: Object.fromEntries(url.searchParams),
+            });
+          }
+          
+          // 여러 가능한 토큰 파라미터 확인
           const authToken = url.searchParams.get('authToken') || 
                           url.searchParams.get('id_token') ||
-                          url.hash?.split('id_token=')[1]?.split('&')[0];
+                          url.searchParams.get('access_token') ||
+                          url.hash?.split('id_token=')[1]?.split('&')[0] ||
+                          url.hash?.split('access_token=')[1]?.split('&')[0];
+          
           const error = url.searchParams.get('error') || 
-                       url.searchParams.get('error_description');
+                       url.searchParams.get('error_description') ||
+                       url.hash?.split('error=')[1]?.split('&')[0];
 
           if (error) {
+            if (__DEV__) {
+              console.error('[Auth] OAuth 오류:', error);
+            }
             throw new Error(`로그인 오류: ${error}`);
           }
 
           if (authToken) {
+            if (__DEV__) {
+              console.log('[Auth] 인증 토큰 발견, Firebase에 로그인 시도');
+            }
+            
             // Firebase Auth에 ID 토큰으로 로그인
             // Google ID 토큰을 Firebase credential로 변환
-            const credential = GoogleAuthProvider.credential(authToken);
-            const result = await signInWithCredential(auth, credential);
-            
-            const user = {
-              id: result.user.uid,
-              email: result.user.email,
-              name: result.user.displayName,
-              photoURL: result.user.photoURL,
-            };
+            try {
+              const credential = GoogleAuthProvider.credential(authToken);
+              const result = await signInWithCredential(auth, credential);
+              
+              const user = {
+                id: result.user.uid,
+                email: result.user.email,
+                name: result.user.displayName,
+                photoURL: result.user.photoURL,
+              };
 
-            await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
-            await AsyncStorage.setItem(AUTH_PROVIDER_KEY, 'google');
+              await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+              await AsyncStorage.setItem(AUTH_PROVIDER_KEY, 'google');
 
-            if (__DEV__) {
-              console.log('[Auth] Google 로그인 성공:', user);
+              if (__DEV__) {
+                console.log('[Auth] Google 로그인 성공:', user);
+              }
+
+              return user;
+            } catch (credentialError) {
+              if (__DEV__) {
+                console.error('[Auth] Credential 로그인 오류:', credentialError);
+              }
+              throw credentialError;
             }
-
-            return user;
           }
 
           // URL에 토큰이 없는 경우, redirect 결과 확인
           // Firebase는 redirect 후 getRedirectResult로 결과를 가져올 수 있음
+          if (__DEV__) {
+            console.log('[Auth] URL에 토큰이 없음, getRedirectResult 시도');
+          }
+          
           try {
             const redirectResult = await getRedirectResult(auth);
             if (redirectResult) {
+              if (__DEV__) {
+                console.log('[Auth] getRedirectResult 성공:', redirectResult.user.uid);
+              }
+              
               const user = {
                 id: redirectResult.user.uid,
                 email: redirectResult.user.email,
@@ -185,14 +364,23 @@ export const signInWithGoogle = async () => {
               await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
               await AsyncStorage.setItem(AUTH_PROVIDER_KEY, 'google');
               return user;
+            } else {
+              if (__DEV__) {
+                console.log('[Auth] getRedirectResult 결과 없음');
+              }
             }
           } catch (redirectError) {
             if (__DEV__) {
-              console.log('[Auth] Redirect 결과 없음:', redirectError);
+              console.error('[Auth] getRedirectResult 오류:', redirectError);
             }
           }
 
-          throw new Error('인증 토큰을 받지 못했습니다. 다시 시도해주세요.');
+          // 상세한 오류 메시지
+          if (__DEV__) {
+            console.error('[Auth] 인증 토큰을 받지 못했습니다.');
+            console.error('[Auth] URL:', browserResult.url);
+          }
+          throw new Error('인증 토큰을 받지 못했습니다. Firebase Console 설정을 확인하세요.');
         } catch (parseError) {
           console.error('[Auth] URL 파싱 오류:', parseError);
           console.error('[Auth] URL:', browserResult.url);
@@ -200,7 +388,41 @@ export const signInWithGoogle = async () => {
         }
       }
 
-      throw new Error('알 수 없는 인증 결과입니다.');
+      // browserResult.type이 'success'이지만 url이 없는 경우
+      if (browserResult.type === 'success' && !browserResult.url) {
+        if (__DEV__) {
+          console.log('[Auth] Success 타입이지만 URL이 없음, getRedirectResult 시도');
+        }
+        // Firebase redirect 결과 확인
+        try {
+          const redirectResult = await getRedirectResult(auth);
+          if (redirectResult) {
+            const user = {
+              id: redirectResult.user.uid,
+              email: redirectResult.user.email,
+              name: redirectResult.user.displayName,
+              photoURL: redirectResult.user.photoURL,
+            };
+            await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+            await AsyncStorage.setItem(AUTH_PROVIDER_KEY, 'google');
+            return user;
+          }
+        } catch (redirectError) {
+          if (__DEV__) {
+            console.log('[Auth] getRedirectResult 실패:', redirectError);
+          }
+        }
+      }
+
+      // 알 수 없는 결과인 경우 상세 정보 로깅
+      if (__DEV__) {
+        console.error('[Auth] 알 수 없는 인증 결과:', {
+          type: browserResult.type,
+          url: browserResult.url,
+          error: browserResult.error,
+        });
+      }
+      throw new Error(`알 수 없는 인증 결과입니다. (타입: ${browserResult.type})`);
     }
   } catch (error) {
     console.error('Google 로그인 오류:', error);

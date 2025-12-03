@@ -30,7 +30,11 @@ export default function RunScreen() {
   const [courseMode, setCourseMode] = useState(false);
   const [courseRoute, setCourseRoute] = useState([]);
   const [voiceGuideEnabled, setVoiceGuideEnabled] = useState(true);
-  const [initialLocation, setInitialLocation] = useState(null);
+  // 기본 위치(서울)로 초기화하여 지도를 먼저 표시
+  const [initialLocation, setInitialLocation] = useState({
+    lat: 37.5665,
+    lng: 126.978,
+  });
   const [locationLoading, setLocationLoading] = useState(false);
   const lastAnnouncedKm = useRef(0);
 
@@ -39,23 +43,20 @@ export default function RunScreen() {
     React.useCallback(() => {
       const getCurrentLocation = async () => {
         if (!granted) {
-          // 권한이 없으면 기본 위치(서울) 사용
-          setInitialLocation({
-            lat: 37.5665,
-            lng: 126.978,
-          });
+          // 권한이 없으면 기본 위치(서울) 유지
           return;
         }
         
         setLocationLoading(true);
         try {
-          // 타임아웃 설정 (10초)
+          // 타임아웃 설정 (5초로 단축)
           const locationPromise = Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
+            timeout: 5000,
           });
           
           const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('위치 정보 요청 시간 초과')), 10000);
+            setTimeout(() => reject(new Error('위치 정보 요청 시간 초과')), 5000);
           });
           
           const location = await Promise.race([locationPromise, timeoutPromise]);
@@ -66,11 +67,7 @@ export default function RunScreen() {
           });
         } catch (error) {
           console.error('[Run] 현재 위치 가져오기 실패:', error);
-          // 실패 시 기본 위치(서울) 사용
-          setInitialLocation({
-            lat: 37.5665,
-            lng: 126.978,
-          });
+          // 실패 시 기본 위치(서울) 유지
         } finally {
           setLocationLoading(false);
         }
@@ -499,12 +496,13 @@ export default function RunScreen() {
     }
   };
 
-  // 로딩 중일 때 표시
-  if (permissionLoading || locationLoading) {
+  // 권한 확인 중일 때만 로딩 화면 표시
+  // 위치 정보는 백그라운드에서 가져오고, 지도는 기본 위치로 먼저 표시
+  if (permissionLoading) {
     return (
       <View style={styles.container}>
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>위치 정보를 가져오는 중...</Text>
+          <Text style={styles.loadingText}>위치 권한을 확인하는 중...</Text>
         </View>
       </View>
     );

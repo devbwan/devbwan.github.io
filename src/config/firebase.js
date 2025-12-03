@@ -10,7 +10,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // 환경 변수는 EXPO_PUBLIC_ 접두사가 있어야 번들에 포함됩니다
 
 const getFirebaseConfig = () => {
-  // 환경 변수에서 Firebase 설정 가져오기
+  // 환경 변수에서만 Firebase 설정 가져오기
+  // 모든 값은 .env 파일에서만 가져옵니다 (하드코딩된 값 없음)
   const apiKey = process.env.EXPO_PUBLIC_FIREBASE_API_KEY;
   const authDomain = process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN;
   const projectId = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID;
@@ -19,18 +20,32 @@ const getFirebaseConfig = () => {
   const appId = process.env.EXPO_PUBLIC_FIREBASE_APP_ID;
   const measurementId = process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID;
 
-  // 환경 변수가 없으면 기본값 사용 (하드코딩된 값 - 개발용)
-  // 실제 배포 시에는 환경 변수를 반드시 설정해야 합니다
+  // 필수 환경 변수 확인
+  if (!apiKey || !authDomain || !projectId || !storageBucket || !messagingSenderId || !appId) {
+    const missingVars = [];
+    if (!apiKey) missingVars.push('EXPO_PUBLIC_FIREBASE_API_KEY');
+    if (!authDomain) missingVars.push('EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN');
+    if (!projectId) missingVars.push('EXPO_PUBLIC_FIREBASE_PROJECT_ID');
+    if (!storageBucket) missingVars.push('EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET');
+    if (!messagingSenderId) missingVars.push('EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID');
+    if (!appId) missingVars.push('EXPO_PUBLIC_FIREBASE_APP_ID');
+    
+    console.error('[Firebase Config] 필수 환경 변수가 설정되지 않았습니다:');
+    console.error('[Firebase Config] 누락된 변수:', missingVars.join(', '));
+    console.error('[Firebase Config] .env.web 또는 .env.android 파일에 환경 변수를 설정하세요.');
+    console.error('[Firebase Config] 자세한 내용은 ENV_COMPLETE_SETUP.md 파일을 참고하세요.');
+    
+    return null;
+  }
+
   return {
-    apiKey: apiKey || "AIzaSyBdk81kHK_GGuRoQoL-z4JGJNfhA9Jini8",
-    authDomain: authDomain || "runningapp-a0bff.firebaseapp.com",
-    projectId: projectId || "runningapp-a0bff",
-    storageBucket: storageBucket || "runningapp-a0bff.firebasestorage.app",
-    messagingSenderId: messagingSenderId || "184251732263",
-    appId: appId || (Platform.OS === 'web' 
-      ? "1:184251732263:web:65a0f2d5b48e3409965902"
-      : "1:184251732263:android:your-android-app-id"),
-    measurementId: measurementId || "G-2VG59SE6H7"
+    apiKey: apiKey,
+    authDomain: authDomain,
+    projectId: projectId,
+    storageBucket: storageBucket,
+    messagingSenderId: messagingSenderId,
+    appId: appId,
+    measurementId: measurementId || undefined // 선택 사항
   };
 };
 
@@ -39,8 +54,12 @@ const firebaseConfig = getFirebaseConfig();
 // 플랫폼 정보 로그
 if (__DEV__) {
   console.log(`[Firebase Config] Platform: ${Platform.OS}`);
-  console.log(`[Firebase Config] Project ID: ${firebaseConfig.projectId}`);
-  console.log(`[Firebase Config] Auth Domain: ${firebaseConfig.authDomain}`);
+  if (firebaseConfig) {
+    console.log(`[Firebase Config] Project ID: ${firebaseConfig.projectId}`);
+    console.log(`[Firebase Config] Auth Domain: ${firebaseConfig.authDomain}`);
+  } else {
+    console.warn('[Firebase Config] Firebase 설정이 로드되지 않았습니다.');
+  }
 }
 
 // Firebase 초기화
@@ -51,6 +70,7 @@ let auth;
 // Firebase 설정이 유효한지 확인
 const isValidFirebaseConfig = () => {
   return (
+    firebaseConfig !== null &&
     firebaseConfig.apiKey &&
     firebaseConfig.apiKey !== "your-api-key" &&
     firebaseConfig.projectId &&
@@ -63,6 +83,11 @@ const isValidFirebaseConfig = () => {
 if (isValidFirebaseConfig()) {
   try {
     app = initializeApp(firebaseConfig);
+    
+    // app이 제대로 초기화되었는지 확인
+    if (!app) {
+      throw new Error('Firebase app 초기화 실패');
+    }
     
     // Auth 초기화 - React Native에서는 AsyncStorage 지속성 사용
     if (Platform.OS === 'web') {
@@ -82,6 +107,11 @@ if (isValidFirebaseConfig()) {
           throw error;
         }
       }
+    }
+    
+    // auth가 제대로 초기화되었는지 확인
+    if (!auth) {
+      throw new Error('Firebase Auth 초기화 실패');
     }
     
     // Firestore 초기화 (오류가 있어도 앱은 계속 작동)
@@ -116,12 +146,14 @@ if (isValidFirebaseConfig()) {
   } catch (error) {
     console.warn('[Firebase] Firebase 초기화 오류:', error);
     console.warn('[Firebase] Firebase 설정을 확인하세요.');
+    app = null;
     db = null;
     auth = null;
   }
 } else {
   console.warn('[Firebase] Firebase 설정이 완료되지 않았습니다.');
   console.warn('[Firebase] .env.web 또는 .env.android 파일에 EXPO_PUBLIC_FIREBASE_* 환경 변수를 설정하세요.');
+  app = null;
   db = null;
   auth = null;
 }
