@@ -1,15 +1,29 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, FlatList, RefreshControl } from 'react-native';
-import { Card, Surface } from 'react-native-paper';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { getRunningSessions } from '../../src/db/sessionRepository';
+import { getRunningSessions } from '../../src/features/records';
+import { PageContainer, Card, Spacer, GradientView } from '../../src/components/ui';
 import { spacing, typography, colors } from '../../src/theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function RecordsScreen() {
   const router = useRouter();
-  const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [sessions, setSessions] = useState([
+    { id: 1, date: '2024.12.08', distance: 5410, duration: 1935, pace: 357 },
+    { id: 2, date: '2024.12.06', distance: 7200, duration: 2550, pace: 354 },
+    { id: 3, date: '2024.12.05', distance: 4100, duration: 1518, pace: 370 },
+    { id: 4, date: '2024.12.03', distance: 8500, duration: 2925, pace: 344 },
+  ]);
+  const [stats, setStats] = useState({
+    thisMonth: 42,
+    total: 152,
+    goalProgress: 68,
+  });
+  const [weeklyStats, setWeeklyStats] = useState({
+    totalDistance: 17100,
+    totalDuration: 6008,
+    avgPace: 352,
+  });
 
   useFocusEffect(
     React.useCallback(() => {
@@ -20,24 +34,23 @@ export default function RecordsScreen() {
   const loadSessions = async () => {
     try {
       const data = await getRunningSessions(null, 50);
-      setSessions(data);
+      if (data && data.length > 0) {
+        setSessions(data.slice(0, 4).map(s => ({
+          id: s.id,
+          date: formatDateShort(s.start_time),
+          distance: s.distance,
+          duration: s.duration,
+          pace: s.avg_pace,
+        })));
+      }
     } catch (error) {
       console.error('기록 로드 실패:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
     }
   };
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadSessions();
-  };
-
   const formatDistance = (meters) => {
-    if (!meters) return '0m';
-    if (meters < 1000) return `${Math.round(meters)}m`;
-    return `${(meters / 1000).toFixed(2)}km`;
+    if (!meters) return '0km';
+    return `${(meters / 1000).toFixed(2)} km`;
   };
 
   const formatDuration = (seconds) => {
@@ -49,143 +62,314 @@ export default function RecordsScreen() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const formatDate = (timestamp) => {
+  const formatPace = (secPerKm) => {
+    if (!secPerKm || secPerKm === 0) return "--'--\"";
+    const mins = Math.floor(secPerKm / 60);
+    const secs = Math.round(secPerKm % 60);
+    return `${mins}'${secs.toString().padStart(2, '0')}"`;
+  };
+
+  const formatDateShort = (timestamp) => {
     if (!timestamp) return '';
     const date = new Date(timestamp * 1000);
     return date.toLocaleDateString('ko-KR', {
       year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+      month: '2-digit',
+      day: '2-digit',
+    }).replace(/\./g, '.').replace(/\s/g, '');
   };
 
-  const renderSession = ({ item }) => (
-    <Card
-      style={styles.card}
-      mode="outlined"
-      onPress={() => {
-        router.push(`/session/${item.id}`);
-      }}
-    >
-      <Card.Content>
-        <Text style={styles.dateText}>{formatDate(item.start_time)}</Text>
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>거리</Text>
-            <Text style={styles.statValue}>{formatDistance(item.distance)}</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>시간</Text>
-            <Text style={styles.statValue}>{formatDuration(item.duration)}</Text>
-          </View>
-          {item.avg_pace && (
-            <View style={styles.statItem}>
-              <Text style={styles.statLabel}>페이스</Text>
-              <Text style={styles.statValue}>
-                {Math.floor(item.avg_pace / 60)}:{(item.avg_pace % 60).toFixed(0).padStart(2, '0')}/km
-              </Text>
-            </View>
-          )}
-        </View>
-      </Card.Content>
-    </Card>
-  );
-
   return (
-    <View style={styles.container}>
+    <PageContainer scrollable style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>기록</Text>
-        <Text style={styles.subtitle}>러닝 기록을 확인하세요</Text>
+        <Text style={styles.headerTitle}>러닝 기록</Text>
+        <TouchableOpacity style={styles.filterButton}>
+          <Text style={styles.filterButtonText}>필터</Text>
+        </TouchableOpacity>
       </View>
 
-      {loading ? (
-        <View style={styles.center}>
-          <Text>로딩 중...</Text>
+      <Spacer height={spacing.lg} />
+
+      {/* Stats Summary */}
+      <View style={styles.statsGrid}>
+        <Card variant="elevated" style={styles.statCard}>
+          <GradientView 
+            colors={colors.gradientOrange}
+            style={styles.statIcon}
+          >
+            <MaterialCommunityIcons name="fire" size={20} color="#FFFFFF" />
+          </GradientView>
+          <Text style={styles.statValue}>{stats.thisMonth}</Text>
+          <Text style={styles.statLabel}>이번 달</Text>
+        </Card>
+
+        <Card variant="elevated" style={styles.statCard}>
+          <GradientView 
+            colors={colors.gradientPrimary}
+            style={styles.statIcon}
+          >
+            <MaterialCommunityIcons name="trophy" size={20} color="#FFFFFF" />
+          </GradientView>
+          <Text style={styles.statValue}>{stats.total}</Text>
+          <Text style={styles.statLabel}>전체</Text>
+        </Card>
+
+        <Card variant="elevated" style={styles.statCard}>
+          <GradientView 
+            colors={colors.gradientGreen}
+            style={styles.statIcon}
+          >
+            <MaterialCommunityIcons name="target" size={20} color="#FFFFFF" />
+          </GradientView>
+          <Text style={styles.statValue}>{stats.goalProgress}%</Text>
+          <Text style={styles.statLabel}>목표</Text>
+        </Card>
+      </View>
+
+      <Spacer height={spacing.lg} />
+
+      {/* This Week */}
+      <View>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>이번 주</Text>
+          <MaterialCommunityIcons name="trending-up" size={20} color={colors.green} />
         </View>
-      ) : sessions.length === 0 ? (
-        <View style={styles.center}>
-          <Text style={styles.emptyText}>아직 기록이 없습니다.</Text>
-          <Text style={styles.emptySubtext}>러닝을 시작해서 첫 기록을 남겨보세요!</Text>
+        <Spacer height={spacing.sm} />
+        
+        <GradientView 
+          colors={colors.gradientPrimary}
+          style={styles.weeklyCard}
+        >
+          <View style={styles.weeklyHeader}>
+            <View>
+              <Text style={styles.weeklyLabel}>총 거리</Text>
+              <Text style={styles.weeklyDistance}>{formatDistance(weeklyStats.totalDistance)}</Text>
+            </View>
+            <View style={styles.weeklyRight}>
+              <Text style={styles.weeklyLabel}>총 시간</Text>
+              <Text style={styles.weeklyTime}>{formatDuration(weeklyStats.totalDuration)}</Text>
+            </View>
+          </View>
+          <View style={styles.weeklyFooter}>
+            <MaterialCommunityIcons name="speedometer" size={16} color="#FFFFFF" />
+            <Text style={styles.weeklyPace}>평균 페이스: {formatPace(weeklyStats.avgPace)}/km</Text>
+          </View>
+        </GradientView>
+      </View>
+
+      <Spacer height={spacing.lg} />
+
+      {/* Recent Activities */}
+      <View>
+        <View style={styles.sectionHeader}>
+          <MaterialCommunityIcons name="calendar" size={20} color={colors.textStrong} />
+          <Text style={styles.sectionTitle}>최근 활동</Text>
         </View>
-      ) : (
-        <FlatList
-          data={sessions}
-          renderItem={renderSession}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-        />
-      )}
-    </View>
+        <Spacer height={spacing.sm} />
+
+        <View style={styles.activitiesList}>
+          {sessions.map((session) => (
+            <TouchableOpacity
+              key={session.id}
+              style={styles.activityCard}
+              onPress={() => router.push(`/session/${session.id}`)}
+            >
+              <View style={styles.activityHeader}>
+                <Text style={styles.activityDate}>{session.date}</Text>
+                <View style={styles.activityBadge}>
+                  <Text style={styles.activityBadgeText}>러닝</Text>
+                </View>
+              </View>
+              <View style={styles.activityStats}>
+                <View style={styles.activityStatItem}>
+                  <Text style={styles.activityStatLabel}>거리</Text>
+                  <Text style={styles.activityStatValue}>{formatDistance(session.distance)}</Text>
+                </View>
+                <View style={styles.activityStatItem}>
+                  <Text style={styles.activityStatLabel}>시간</Text>
+                  <Text style={styles.activityStatValue}>{formatDuration(session.duration)}</Text>
+                </View>
+                <View style={styles.activityStatItem}>
+                  <Text style={styles.activityStatLabel}>페이스</Text>
+                  <Text style={styles.activityStatValue}>{formatPace(session.pace)}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <Spacer height={spacing.xl} />
+    </PageContainer>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: colors.background.light,
+    backgroundColor: colors.background,
   },
   header: {
-    padding: spacing.xl,
-    paddingTop: spacing.xl + 20,
-  },
-  title: {
-    fontSize: typography.fontSize.xxxl,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.primary,
-    marginBottom: spacing.xs,
-  },
-  subtitle: {
-    fontSize: typography.fontSize.md,
-    color: '#666',
-  },
-  list: {
-    padding: spacing.lg,
-  },
-  card: {
-    borderRadius: 16,
-    marginBottom: spacing.md,
-  },
-  dateText: {
-    fontSize: typography.fontSize.sm,
-    color: '#666',
-    marginBottom: spacing.md,
-  },
-  statsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  statItem: {
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: spacing.md,
   },
-  statLabel: {
-    fontSize: typography.fontSize.xs,
-    color: '#666',
-    marginBottom: spacing.xs,
+  headerTitle: {
+    ...typography.h1,
+    color: colors.textStrong,
+    fontWeight: '800',
+    letterSpacing: -0.02,
+    fontFamily: typography.h1.fontFamily,
   },
-  statValue: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semibold,
+  filterButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.primary,
+    borderRadius: 20,
   },
-  center: {
+  filterButtonText: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontFamily: typography.body.fontFamily,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  statCard: {
     flex: 1,
+    alignItems: 'center',
+    padding: spacing.md,
+  },
+  statIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.xl,
-  },
-  emptyText: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.medium,
     marginBottom: spacing.sm,
-    textAlign: 'center',
   },
-  emptySubtext: {
-    fontSize: typography.fontSize.md,
-    color: '#666',
-    textAlign: 'center',
+  statValue: {
+    fontSize: 20,
+    color: colors.textStrong,
+    fontWeight: '800',
+    marginBottom: spacing.xs / 2,
+    fontFamily: typography.h1.fontFamily,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: colors.textLight,
+    fontWeight: '500',
+    fontFamily: typography.caption.fontFamily,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  sectionTitle: {
+    ...typography.h2,
+    fontSize: 20,
+    color: colors.textStrong,
+    fontWeight: '600',
+    letterSpacing: -0.01,
+    fontFamily: typography.h2.fontFamily,
+  },
+  weeklyCard: {
+    borderRadius: 20,
+    padding: spacing.lg,
+  },
+  weeklyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
+  },
+  weeklyLabel: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginBottom: spacing.xs / 2,
+    fontFamily: typography.body.fontFamily,
+  },
+  weeklyDistance: {
+    fontSize: 32,
+    color: '#FFFFFF',
+    fontWeight: '800',
+    letterSpacing: -0.01,
+    fontFamily: typography.h1.fontFamily,
+  },
+  weeklyRight: {
+    alignItems: 'flex-end',
+  },
+  weeklyTime: {
+    fontSize: 24,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontFamily: typography.h1.fontFamily,
+  },
+  weeklyFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  weeklyPace: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontFamily: typography.body.fontFamily,
+  },
+  activitiesList: {
+    gap: spacing.sm,
+  },
+  activityCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  activityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  activityDate: {
+    fontSize: 14,
+    color: colors.textLight,
+    fontWeight: '500',
+    fontFamily: typography.caption.fontFamily,
+  },
+  activityBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs / 2,
+    backgroundColor: `${colors.primary}33`,
+    borderRadius: 12,
+  },
+  activityBadgeText: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '600',
+    fontFamily: typography.caption.fontFamily,
+  },
+  activityStats: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  activityStatItem: {
+    flex: 1,
+  },
+  activityStatLabel: {
+    fontSize: 11,
+    color: colors.textLight,
+    marginBottom: spacing.xs / 2,
+    fontFamily: typography.caption.fontFamily,
+  },
+  activityStatValue: {
+    fontSize: 18,
+    color: colors.textStrong,
+    fontWeight: '700',
+    fontFamily: typography.body.fontFamily,
   },
 });

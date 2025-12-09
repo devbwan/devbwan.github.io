@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Platform, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Card, Button, Chip, Divider, Surface } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { getCourseById } from '../../src/services/courseService';
+import { getCourseById } from '../../src/api';
 import { RunMapView } from '../../src/components/MapView';
 import { RunMapView as RunMapViewWeb } from '../../src/components/MapView.web';
 import { spacing, typography, colors } from '../../src/theme';
@@ -269,23 +269,26 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   title: {
-    fontSize: typography.fontSize.xxl,
-    fontWeight: typography.fontWeight.bold,
+    fontSize: typography.h1.fontSize,
+    fontWeight: typography.h1.fontWeight,
     flex: 1,
     marginRight: spacing.sm,
+    fontFamily: typography.h1.fontFamily,
   },
   difficultyChip: {
     height: 28,
   },
   chipText: {
-    fontSize: typography.fontSize.xs,
+    fontSize: 12,
     color: '#fff',
+    fontFamily: typography.caption.fontFamily,
   },
   description: {
-    fontSize: typography.fontSize.md,
+    fontSize: typography.body.fontSize,
     color: '#666',
     lineHeight: 24,
     marginBottom: spacing.md,
+    fontFamily: typography.body.fontFamily,
   },
   divider: {
     marginVertical: spacing.md,
@@ -304,19 +307,22 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   statValue: {
-    fontSize: typography.fontSize.xl,
-    fontWeight: typography.fontWeight.bold,
+    fontSize: typography.h2.fontSize,
+    fontWeight: typography.h1.fontWeight,
     color: colors.primary,
     marginBottom: spacing.xs,
+    fontFamily: typography.h1.fontFamily,
   },
   statLabel: {
-    fontSize: typography.fontSize.sm,
+    fontSize: typography.caption.fontSize,
     color: '#666',
+    fontFamily: typography.caption.fontFamily,
   },
   cardTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.semibold,
+    fontSize: typography.h2.fontSize,
+    fontWeight: typography.h2.fontWeight,
     marginBottom: spacing.md,
+    fontFamily: typography.h2.fontFamily,
   },
   infoRow: {
     flexDirection: 'row',
@@ -324,18 +330,21 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   infoLabel: {
-    fontSize: typography.fontSize.md,
+    fontSize: typography.body.fontSize,
     color: '#666',
+    fontFamily: typography.body.fontFamily,
   },
   infoValue: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.medium,
+    fontSize: typography.body.fontSize,
+    fontWeight: '500',
+    fontFamily: typography.body.fontFamily,
   },
   emptyText: {
-    fontSize: typography.fontSize.md,
+    fontSize: typography.body.fontSize,
     color: '#666',
     textAlign: 'center',
     paddingVertical: spacing.md,
+    fontFamily: typography.body.fontFamily,
   },
   footer: {
     padding: spacing.lg,
@@ -362,15 +371,17 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   loadingText: {
-    fontSize: typography.fontSize.md,
+    fontSize: typography.body.fontSize,
     color: '#666',
     marginTop: spacing.md,
+    fontFamily: typography.body.fontFamily,
   },
   errorText: {
-    fontSize: typography.fontSize.lg,
+    fontSize: typography.h2.fontSize,
     color: colors.error,
     textAlign: 'center',
     padding: spacing.xl,
+    fontFamily: typography.h2.fontFamily,
   },
 });
 

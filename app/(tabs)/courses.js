@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, FlatList, ActivityIndicator, Alert, TextInput, TouchableOpacity, Platform, BackHandler } from 'react-native';
-import { Card, Button, Searchbar, Chip, Dialog, Portal, RadioButton, Divider } from 'react-native-paper';
+import { View, Text, StyleSheet, ScrollView, FlatList, ActivityIndicator, Alert, TextInput, TouchableOpacity, Platform, BackHandler, ImageBackground } from 'react-native';
+import { Searchbar, Chip, Dialog, Portal, RadioButton, Divider } from 'react-native-paper';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { getAllCourses, getTop3Courses, createCourse } from '../../src/services/courseService';
-import { useAuthStore } from '../../src/stores/authStore';
+import { getAllCourses, getTop3Courses, createCourse, getRunningRoutesFromOSM, getPopularRoutesFromOSM } from '../../src/api';
+import { useAuthStore } from '../../src/features/auth';
+import { PageContainer, Card, Button, GradientView, Spacer, SectionTitle } from '../../src/components/ui';
 import { spacing, typography, colors } from '../../src/theme';
-import { getRunningRoutesFromOSM, getPopularRoutesFromOSM } from '../../src/services/openStreetMapService';
 import { parseGPXSimple, parseGPXFromURL } from '../../src/utils/gpxParser';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function CoursesScreen() {
   const router = useRouter();
@@ -156,14 +157,25 @@ export default function CoursesScreen() {
   const getDifficultyText = (difficulty) => {
     switch (difficulty) {
       case 'easy':
-        return '쉬움';
+        return '초급';
       case 'medium':
-        return '보통';
+        return '중급';
       case 'hard':
-        return '어려움';
+        return '고급';
       default:
-        return '';
+        return '중급';
     }
+  };
+
+  const getCourseGradientColors = (courseId) => {
+    const gradients = [
+      ['#667eea', '#764ba2'], // Purple
+      ['#f093fb', '#f5576c'], // Pink
+      ['#4facfe', '#00f2fe'], // Blue
+      ['#43e97b', '#38f9d7'], // Green
+    ];
+    const index = parseInt(courseId || '0', 10) % gradients.length;
+    return gradients[index];
   };
 
   // OpenStreetMap에서 코스 가져오기
@@ -416,143 +428,107 @@ export default function CoursesScreen() {
   };
 
   const renderCourse = ({ item }) => (
-    <Card style={styles.card} mode="outlined" onPress={() => {}}>
-      <Card.Content>
-        <View style={styles.cardHeader}>
-          <Text style={styles.courseName}>{item.name}</Text>
-          <Chip
-            style={[styles.difficultyChip, { backgroundColor: getDifficultyColor(item.difficulty) }]}
-            textStyle={styles.chipText}
-          >
-            {getDifficultyText(item.difficulty)}
-          </Chip>
+    <Card style={styles.card}>
+      <View style={styles.cardHeader}>
+        <Text style={styles.courseName}>{item.name}</Text>
+        <Chip
+          style={[styles.difficultyChip, { backgroundColor: getDifficultyColor(item.difficulty) }]}
+          textStyle={styles.chipText}
+        >
+          {getDifficultyText(item.difficulty)}
+        </Chip>
+      </View>
+      <Text style={styles.courseDescription}>{item.description}</Text>
+      <View style={styles.courseStats}>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>거리</Text>
+          <Text style={styles.statValue}>{formatDistance(item.distance)}</Text>
         </View>
-        <Text style={styles.courseDescription}>{item.description}</Text>
-        <View style={styles.courseStats}>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>거리</Text>
-            <Text style={styles.statValue}>{formatDistance(item.distance)}</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>러너 수</Text>
-            <Text style={styles.statValue}>{item.runnerCount.toLocaleString()}</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>평점</Text>
-            <Text style={styles.statValue}>★ {item.rating}</Text>
-          </View>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>러너 수</Text>
+          <Text style={styles.statValue}>{item.runnerCount.toLocaleString()}</Text>
         </View>
-      </Card.Content>
-      <Card.Actions>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>평점</Text>
+          <Text style={styles.statValue}>★ {item.rating}</Text>
+        </View>
+      </View>
+      <View style={styles.cardActions}>
         <Button 
+          variant="outline"
+          size="medium"
           onPress={() => {
             router.push(`/course/${item.id}`);
           }}
+          style={styles.actionButton}
         >
           상세보기
         </Button>
         <Button 
-          mode="contained" 
+          variant="primary"
+          size="medium"
           onPress={() => {
             router.push({
               pathname: '/(tabs)/run',
               params: { courseId: item.id },
             });
           }}
+          style={styles.actionButton}
         >
           코스로 시작
         </Button>
-      </Card.Actions>
+      </View>
     </Card>
   );
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerText}>
-            <Text style={styles.title}>코스</Text>
-            <Text style={styles.subtitle}>인기 코스와 추천 코스를 만나보세요</Text>
-          </View>
-          <View style={styles.headerButtons}>
-            <TouchableOpacity
-              onPress={() => {
-                console.log('=== 가져오기 버튼 클릭 시작 ===');
-                Alert.alert('테스트', '가져오기 버튼이 클릭되었습니다!');
-                
-                console.log('[Courses] 가져오기 버튼 클릭됨');
-                console.log('[Courses] 현재 user:', user);
-                console.log('[Courses] 현재 importDialogVisible:', importDialogVisible);
-                
-                if (!user) {
-                  console.log('[Courses] 로그인 필요 - Alert 표시');
-                  Alert.alert('로그인 필요', '코스를 가져오려면 로그인이 필요합니다.');
-                  return;
-                }
-                
-                console.log('[Courses] 다이얼로그 열기 시도');
-                setImportDialogVisible(true);
-                console.log('[Courses] setImportDialogVisible(true) 호출 완료');
-              }}
-              style={[styles.importButtonTouchable, styles.importButton]}
-            >
-              <Text style={styles.importButtonText}>가져오기</Text>
-            </TouchableOpacity>
-            {user && (
-              <Button
-                mode="contained"
-                icon="upload"
-                onPress={() => setUploadDialogVisible(true)}
-                style={styles.uploadButton}
-                compact
-              >
-                업로드
-              </Button>
-            )}
-          </View>
-        </View>
+    <PageContainer scrollable>
+      {/* Header */}
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>러닝 코스</Text>
+        <TouchableOpacity
+          onPress={() => {
+            if (!user) {
+              Alert.alert('로그인 필요', '코스를 가져오려면 로그인이 필요합니다.');
+              return;
+            }
+            setImportDialogVisible(true);
+          }}
+          style={styles.navigationButton}
+        >
+          <GradientView colors={colors.gradientPrimary} style={styles.navigationButtonGradient}>
+            <MaterialCommunityIcons name="navigation" size={20} color={colors.textStrong} />
+          </GradientView>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.searchContainer}>
-        <Searchbar
-          placeholder="코스 검색..."
-          onChangeText={setSearchQuery}
-          value={searchQuery}
-          style={styles.searchbar}
-        />
+      <Spacer height={spacing.xl} />
+
+      {/* Map Preview */}
+      <View style={styles.mapPreviewContainer}>
+        <GradientView 
+          colors={['#667eea', '#764ba2']} 
+          start={[0, 0]} 
+          end={[1, 1]} 
+          style={styles.mapPreview}
+        >
+          <View style={styles.mapPreviewContent}>
+            <MaterialCommunityIcons name="map" size={48} color={colors.textStrong} />
+            <Text style={styles.mapPreviewText}>지도 보기</Text>
+          </View>
+          <View style={styles.mapPreviewBadge}>
+            <MaterialCommunityIcons name="map-marker" size={16} color={colors.primary} />
+            <Text style={styles.mapPreviewBadgeText}>서울, 한국</Text>
+          </View>
+        </GradientView>
       </View>
 
-      <View style={styles.filterContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <Chip
-            selected={filter === 'all'}
-            onPress={() => setFilter('all')}
-            style={styles.filterChip}
-          >
-            전체
-          </Chip>
-          <Chip
-            selected={filter === 'popular'}
-            onPress={() => setFilter('popular')}
-            style={styles.filterChip}
-          >
-            인기
-          </Chip>
-          <Chip
-            selected={filter === 'nearby'}
-            onPress={() => setFilter('nearby')}
-            style={styles.filterChip}
-          >
-            근처
-          </Chip>
-          <Chip
-            selected={filter === 'difficulty'}
-            onPress={() => setFilter('difficulty')}
-            style={styles.filterChip}
-          >
-            난이도
-          </Chip>
-        </ScrollView>
+      <Spacer height={spacing.xl} />
+
+      {/* Popular Courses */}
+      <View style={styles.sectionHeader}>
+        <SectionTitle style={styles.sectionTitleText}>인기 코스</SectionTitle>
+        <MaterialCommunityIcons name="trending-up" size={20} color={colors.primary} />
       </View>
 
       {loading ? (
@@ -562,39 +538,93 @@ export default function CoursesScreen() {
         </View>
       ) : (
         <>
-          <View style={styles.top3Section}>
-            <Text style={styles.sectionTitle}>인기 코스 TOP3</Text>
-            {top3Courses.length > 0 ? (
-              <FlatList
-                data={top3Courses}
-                renderItem={renderCourse}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={styles.list}
-                scrollEnabled={false}
-              />
+          <View style={styles.coursesList}>
+            {courses.length > 0 ? (
+              courses.slice(0, 4).map((course) => (
+                <Card key={course.id} style={styles.courseCard}>
+                  {/* Course Image */}
+                  <GradientView 
+                    colors={getCourseGradientColors(course.id)} 
+                    start={[0, 0]} 
+                    end={[1, 0]} 
+                    style={styles.courseImage}
+                  >
+                    <View style={styles.courseImageBadge}>
+                      <Text style={styles.courseImageBadgeText}>
+                        {getDifficultyText(course.difficulty)}
+                      </Text>
+                    </View>
+                  </GradientView>
+
+                  {/* Course Info */}
+                  <View style={styles.courseInfo}>
+                    <View style={styles.courseInfoHeader}>
+                      <View style={styles.courseInfoLeft}>
+                        <Text style={styles.courseName}>{course.name}</Text>
+                        <Text style={styles.courseDistance}>{formatDistance(course.distance)}</Text>
+                      </View>
+                      <View style={styles.courseRating}>
+                        <MaterialCommunityIcons name="star" size={16} color="#FFD700" />
+                        <Text style={styles.courseRatingText}>{course.rating || 4.8}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.courseInfoFooter}>
+                      <Text style={styles.courseReviews}>{course.reviewCount || 0}개 리뷰</Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          router.push({
+                            pathname: '/(tabs)/run',
+                            params: { courseId: course.id },
+                          });
+                        }}
+                        style={styles.startButton}
+                      >
+                        <Text style={styles.startButtonText}>시작하기</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </Card>
+              ))
             ) : (
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>인기 코스가 없습니다.</Text>
+                <Text style={styles.emptyText}>코스가 없습니다.</Text>
               </View>
             )}
           </View>
 
-          <View style={styles.allCoursesSection}>
-            <Text style={styles.sectionTitle}>모든 코스</Text>
-            <FlatList
-              data={courses}
-              renderItem={renderCourse}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.list}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>코스가 없습니다.</Text>
-                </View>
-              }
-              refreshing={loading}
-              onRefresh={loadCourses}
-            />
+          <Spacer height={spacing.xl} />
+
+          {/* Nearby Routes */}
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons name="map-marker" size={20} color={colors.textStrong} />
+            <SectionTitle style={styles.sectionTitleText}>내 주변 코스</SectionTitle>
           </View>
+
+          <Card style={styles.nearbyRoutesCard}>
+            {top3Courses.length > 0 ? (
+              top3Courses.slice(0, 3).map((route, index) => (
+                <View key={route.id || index} style={styles.nearbyRouteItem}>
+                  <GradientView colors={colors.gradientPrimary} style={styles.nearbyRouteIcon}>
+                    <MaterialCommunityIcons name="map-marker" size={20} color={colors.textStrong} />
+                  </GradientView>
+                  <View style={styles.nearbyRouteInfo}>
+                    <Text style={styles.nearbyRouteName}>{route.name}</Text>
+                    <Text style={styles.nearbyRouteDetails}>
+                      {formatDistance(route.distance)} · 약 {Math.round(route.distance / 1000 * 6)}분
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => router.push(`/course/${route.id}`)}
+                    style={styles.viewButton}
+                  >
+                    <Text style={styles.viewButtonText}>보기</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>주변 코스가 없습니다.</Text>
+            )}
+          </Card>
         </>
       )}
 
@@ -749,65 +779,241 @@ export default function CoursesScreen() {
           </Dialog.Actions>
         </Dialog>
       </Portal>
-    </View>
+    </PageContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background.light,
-  },
-  header: {
-    padding: spacing.xl,
-    paddingTop: spacing.xl + 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
   title: {
-    fontSize: typography.fontSize.xxxl,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.primary,
+    ...typography.h1,
+    fontSize: 32,
+    fontWeight: '800',
+    color: colors.textStrong,
+    fontFamily: typography.h1.fontFamily,
+  },
+  navigationButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  navigationButtonGradient: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapPreviewContainer: {
+    paddingHorizontal: spacing.md,
+  },
+  mapPreview: {
+    width: '100%',
+    height: 160,
+    borderRadius: 24,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  mapPreviewContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapPreviewText: {
+    ...typography.label,
+    color: colors.textStrong,
+    marginTop: spacing.xs,
+  },
+  mapPreviewBadge: {
+    position: 'absolute',
+    top: spacing.md,
+    left: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: 'rgba(28, 28, 30, 0.8)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  mapPreviewBadgeText: {
+    ...typography.caption,
+    color: colors.textStrong,
+    fontWeight: '600',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+  },
+  sectionTitleText: {
+    marginBottom: 0,
+  },
+  coursesList: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.md,
+  },
+  courseCard: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 0,
+  },
+  courseImage: {
+    width: '100%',
+    height: 100,
+    justifyContent: 'flex-end',
+    padding: spacing.md,
+  },
+  courseImageBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: 'rgba(28, 28, 30, 0.9)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  courseImageBadgeText: {
+    ...typography.caption,
+    fontSize: 12,
+    color: colors.textStrong,
+    fontWeight: '600',
+  },
+  courseInfo: {
+    padding: spacing.md,
+  },
+  courseInfoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm,
+  },
+  courseInfoLeft: {
+    flex: 1,
+  },
+  courseName: {
+    ...typography.body,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textStrong,
     marginBottom: spacing.xs,
   },
+  courseDistance: {
+    ...typography.caption,
+    color: colors.textLight,
+  },
+  courseRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  courseRatingText: {
+    ...typography.label,
+    color: colors.textStrong,
+  },
+  courseInfoFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  courseReviews: {
+    ...typography.caption,
+    fontSize: 12,
+    color: colors.textLight,
+  },
+  startButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.primary,
+    borderRadius: 20,
+  },
+  startButtonText: {
+    ...typography.caption,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textStrong,
+  },
+  nearbyRoutesCard: {
+    borderRadius: 20,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginHorizontal: spacing.md,
+  },
+  nearbyRouteItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  nearbyRouteIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nearbyRouteInfo: {
+    flex: 1,
+  },
+  nearbyRouteName: {
+    ...typography.label,
+    color: colors.textStrong,
+    marginBottom: spacing.xs,
+  },
+  nearbyRouteDetails: {
+    ...typography.caption,
+    color: colors.textLight,
+  },
+  viewButton: {
+    paddingHorizontal: spacing.sm,
+  },
+  viewButtonText: {
+    ...typography.caption,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+  },
   subtitle: {
-    fontSize: typography.fontSize.md,
-    color: '#666',
+    ...typography.caption,
+    color: colors.textLight,
+    fontFamily: typography.caption.fontFamily,
   },
   searchContainer: {
-    padding: spacing.lg,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    marginBottom: spacing.md,
   },
   searchbar: {
     borderRadius: 12,
   },
   filterContainer: {
-    padding: spacing.md,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    marginBottom: spacing.md,
   },
   filterChip: {
     marginRight: spacing.sm,
   },
   top3Section: {
-    padding: spacing.lg,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    marginBottom: spacing.lg,
   },
   allCoursesSection: {
-    flex: 1,
-    padding: spacing.lg,
+    marginBottom: spacing.lg,
   },
   sectionTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.semibold,
-    marginBottom: spacing.md,
-    color: '#000',
+    ...typography.h2,
+    marginBottom: spacing.sm,
+    color: colors.textStrong,
+    fontFamily: typography.h2.fontFamily,
   },
   list: {
     gap: spacing.md,
@@ -823,48 +1029,64 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   courseName: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.semibold,
+    ...typography.h2,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textStrong,
     flex: 1,
+    fontFamily: typography.h2.fontFamily,
   },
   difficultyChip: {
     height: 24,
   },
   chipText: {
-    fontSize: typography.fontSize.xs,
+    ...typography.bodySmall,
     color: '#fff',
   },
   courseDescription: {
-    fontSize: typography.fontSize.sm,
-    color: '#666',
+    ...typography.caption,
+    color: colors.textLight,
     marginBottom: spacing.md,
+    fontFamily: typography.caption.fontFamily,
   },
   courseStats: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: colors.border,
+    marginTop: spacing.md,
+  },
+  cardActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.md,
+  },
+  actionButton: {
+    flex: 1,
   },
   statItem: {
     alignItems: 'center',
   },
   statLabel: {
-    fontSize: typography.fontSize.xs,
+    fontSize: 12,
     color: '#666',
     marginBottom: spacing.xs,
+    fontFamily: typography.caption.fontFamily,
   },
   statValue: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.medium,
+    fontSize: typography.caption.fontSize,
+    fontWeight: '500',
+    fontFamily: typography.caption.fontFamily,
   },
   emptyContainer: {
     padding: spacing.xl,
     alignItems: 'center',
   },
   emptyText: {
-    fontSize: typography.fontSize.md,
+    fontSize: typography.body.fontSize,
     color: '#666',
+    fontFamily: typography.body.fontFamily,
   },
   loadingContainer: {
     flex: 1,
@@ -873,9 +1095,10 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   loadingText: {
-    fontSize: typography.fontSize.md,
+    fontSize: typography.body.fontSize,
     color: '#666',
     marginTop: spacing.md,
+    fontFamily: typography.body.fontFamily,
   },
   headerRow: {
     flexDirection: 'row',
@@ -908,8 +1131,9 @@ const styles = StyleSheet.create({
   },
   importButtonText: {
     color: colors.primary,
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.medium,
+    fontSize: typography.caption.fontSize,
+    fontWeight: '500',
+    fontFamily: typography.caption.fontFamily,
   },
   importMethods: {
     marginBottom: spacing.md,
@@ -918,10 +1142,11 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   methodDescription: {
-    fontSize: typography.fontSize.sm,
+    fontSize: typography.caption.fontSize,
     color: '#666',
     marginTop: spacing.xs,
     marginBottom: spacing.sm,
+    fontFamily: typography.caption.fontFamily,
   },
   importGPXButton: {
     marginTop: spacing.md,
@@ -931,27 +1156,24 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     marginBottom: spacing.md,
   },
-  loadingText: {
-    marginTop: spacing.md,
-    fontSize: typography.fontSize.sm,
-    color: '#666',
-  },
   dialogInput: {
     marginBottom: spacing.md,
   },
   dialogLabel: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.medium,
+    fontSize: typography.body.fontSize,
+    fontWeight: '500',
     marginTop: spacing.md,
     marginBottom: spacing.xs,
+    fontFamily: typography.body.fontFamily,
   },
   dialogDivider: {
     marginVertical: spacing.md,
   },
   dialogHint: {
-    fontSize: typography.fontSize.sm,
+    fontSize: typography.caption.fontSize,
     color: '#666',
     marginTop: spacing.md,
     fontStyle: 'italic',
+    fontFamily: typography.caption.fontFamily,
   },
 });

@@ -88,6 +88,10 @@ EXPO_PUBLIC_FIREBASE_APP_ID=1:184251732263:web:65a0f2d5b48e3409965902
 EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID=G-2VG59SE6H7
 
 # Google OAuth Client ID (웹용)
+# google-services.json의 client_type: 3 (Web OAuth Client ID) 값 사용
+# expo-auth-session/providers/google에서 사용됨
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=184251732263-83kt98h7ceiervojh7ial5e35d5oq290.apps.googleusercontent.com
+# 호환성을 위한 별칭 (선택 사항)
 EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB=184251732263-83kt98h7ceiervojh7ial5e35d5oq290.apps.googleusercontent.com
 
 # Naver OAuth Client ID (웹용, 선택 사항)
@@ -111,7 +115,13 @@ EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=184251732263
 EXPO_PUBLIC_FIREBASE_APP_ID=1:184251732263:android:ef7e2f972a0e29da965902
 
 # Google OAuth Client ID (Android용)
+# google-services.json의 client_type: 1 (Android OAuth Client ID) - SHA-1 기반으로 자동 인식됨
 EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID=184251732263-lfhppnmo7nhn7i2gakpdshs51pqfeqoo.apps.googleusercontent.com
+
+# Google Web OAuth Client ID (모바일에서도 필요)
+# google-services.json의 client_type: 3 (Web OAuth Client ID) 값 사용
+# expo-auth-session/providers/google에서 Firebase Auth token exchange에 사용됨
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=184251732263-83kt98h7ceiervojh7ial5e35d5oq290.apps.googleusercontent.com
 
 # Naver OAuth Client ID (Android용, 선택 사항)
 EXPO_PUBLIC_NAVER_CLIENT_ID_ANDROID=your-naver-client-id-android
@@ -122,6 +132,10 @@ EXPO_PUBLIC_ENV=development
 
 **중요 값 확인:**
 - Firebase 설정 값은 `google-services.json` 파일과 일치해야 합니다
+- **Google Web OAuth Client ID**: `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`는 `google-services.json`의 `client_type: 3` 값과 일치해야 합니다
+  - 현재 값: `184251732263-83kt98h7ceiervojh7ial5e35d5oq290.apps.googleusercontent.com`
+  - 이 값은 `expo-auth-session/providers/google`에서 Firebase Auth token exchange에 사용됩니다
+- **Android OAuth Client ID**: `google-services.json`의 `client_type: 1` 값은 SHA-1 기반으로 자동 인식됩니다
 - OAuth Client ID는 Firebase Console 또는 Google Cloud Console에서 확인하세요
 - **Google Maps API Key**: `EXPO_PUBLIC_FIREBASE_API_KEY`와 동일한 값을 사용합니다 (자동으로 설정됨)
 

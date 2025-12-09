@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { Card, Surface, Divider } from 'react-native-paper';
 import { useLocalSearchParams } from 'expo-router';
-import { getRunningSessions, getRoutePoints } from '../../src/db/sessionRepository';
+import { getRunningSessions, getRunningSession, getRoutePoints } from '../../src/features/records';
 import { RunMapView } from '../../src/components/MapView';
 import { spacing, typography, colors } from '../../src/theme';
 
@@ -205,9 +205,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   dateText: {
-    fontSize: typography.fontSize.md,
+    fontSize: typography.body.fontSize,
     color: '#666',
     marginBottom: spacing.md,
+    fontFamily: typography.body.fontFamily,
   },
   divider: {
     marginVertical: spacing.md,
@@ -226,19 +227,22 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   statValue: {
-    fontSize: typography.fontSize.xl,
-    fontWeight: typography.fontWeight.bold,
+    fontSize: typography.h2.fontSize,
+    fontWeight: typography.h1.fontWeight,
     color: colors.primary,
     marginBottom: spacing.xs,
+    fontFamily: typography.h1.fontFamily,
   },
   statLabel: {
-    fontSize: typography.fontSize.sm,
+    fontSize: typography.caption.fontSize,
     color: '#666',
+    fontFamily: typography.caption.fontFamily,
   },
   cardTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.semibold,
+    fontSize: typography.h2.fontSize,
+    fontWeight: typography.h2.fontWeight,
     marginBottom: spacing.md,
+    fontFamily: typography.h2.fontFamily,
   },
   detailRow: {
     flexDirection: 'row',
@@ -246,23 +250,27 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   detailLabel: {
-    fontSize: typography.fontSize.md,
+    fontSize: typography.body.fontSize,
     color: '#666',
+    fontFamily: typography.body.fontFamily,
   },
   detailValue: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.medium,
+    fontSize: typography.body.fontSize,
+    fontWeight: '500',
+    fontFamily: typography.body.fontFamily,
   },
   routeText: {
-    fontSize: typography.fontSize.md,
+    fontSize: typography.body.fontSize,
     color: '#666',
     marginTop: spacing.sm,
+    fontFamily: typography.body.fontFamily,
   },
   errorText: {
-    fontSize: typography.fontSize.lg,
+    fontSize: typography.h2.fontSize,
     color: colors.error,
     textAlign: 'center',
     padding: spacing.xl,
+    fontFamily: typography.h2.fontFamily,
   },
 });
 

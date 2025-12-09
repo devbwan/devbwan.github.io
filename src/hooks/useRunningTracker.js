@@ -1,13 +1,16 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo, useCallback } from 'react';
 import * as Location from 'expo-location';
 import { useRunStore } from '../stores/runStore';
+import { isValidLocation, calculateDistance, calculatePace, convertSpeedToKmh } from '../core/gpsUtils';
+import { LocationBuffer } from '../core/locationFilter';
 
 export function useRunningTracker() {
-  const { isRunning, start, pause, resume, stop, addPoint, addDistance, setDuration, setPace, setMaxSpeed } = useRunStore();
+  const { isRunning, start, pause, resume, stop, addPoint, addDistance, setDuration, setPace, setMaxSpeed, distance, duration } = useRunStore();
   const watchSubscriptionRef = useRef(null);
   const timerRef = useRef(null);
   const lastLocationRef = useRef(null);
   const startTimeRef = useRef(null);
+  const locationBufferRef = useRef(new LocationBuffer(2000)); // 2초 간격
 
   useEffect(() => {
     if (isRunning) {
@@ -20,10 +23,10 @@ export function useRunningTracker() {
           const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
           setDuration(elapsed);
           
-          // 페이스 계산 (거리가 있을 때)
-          const { distance } = useRunStore.getState();
-          if (distance > 0) {
-            const pace = Math.round((elapsed / distance) * 1000); // 초/km
+          // 페이스 계산 (메모이제이션된 함수 사용)
+          const currentDistance = useRunStore.getState().distance;
+          if (currentDistance > 0) {
+            const pace = calculatePace(elapsed, currentDistance);
             setPace(pace);
           }
         }
@@ -40,37 +43,64 @@ export function useRunningTracker() {
         watchSubscriptionRef.current = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.High,
-            timeInterval: 5000, // 5초마다 업데이트
-            distanceInterval: 10, // 10m 이동 시 업데이트
+            timeInterval: 1000, // 1초마다 업데이트 (고정 간격 기록을 위해)
+            distanceInterval: 0, // 거리 기반 업데이트 비활성화 (시간 기반만 사용)
           },
           (location) => {
-            const { latitude, longitude, speed } = location.coords;
-            const point = {
-              lat: latitude,
-              lng: longitude,
-              timestamp: Date.now(),
-            };
+            // 위치 데이터 품질 필터링
+            if (!isValidLocation(location)) {
+              if (__DEV__) {
+                console.warn('[RunTracker] 유효하지 않은 위치 데이터 무시');
+              }
+              return;
+            }
 
+            const { latitude, longitude, speed, accuracy } = location.coords;
+
+            // 고정 간격 기록 (2초)
+            const formattedLocation = locationBufferRef.current.addLocation(location);
+            if (!formattedLocation) {
+              // 아직 기록할 시간이 안 됨
+              return;
+            }
+
+            // 위치 포인트 추가
+            const point = {
+              lat: formattedLocation.lat,
+              lng: formattedLocation.lng,
+              timestamp: formattedLocation.timestamp,
+              accuracy: formattedLocation.accuracy,
+            };
             addPoint(point);
 
-            // 속도 업데이트 (m/s를 km/h로 변환)
+            // 속도 업데이트 (m/s를 km/h로 변환, 메모이제이션된 함수 사용)
             if (speed && speed > 0) {
-              const speedKmh = speed * 3.6;
+              const speedKmh = convertSpeedToKmh(speed);
               setMaxSpeed(speedKmh);
             }
 
-            // 거리 계산 (이전 위치가 있을 때)
+            // 거리 계산 (이전 위치가 있을 때, 메모이제이션된 함수 사용)
             if (lastLocationRef.current) {
-              const distance = calculateDistance(
+              const distanceDelta = calculateDistance(
                 lastLocationRef.current.lat,
                 lastLocationRef.current.lng,
-                latitude,
-                longitude
+                formattedLocation.lat,
+                formattedLocation.lng
               );
-              addDistance(distance);
+              
+              // 거리 델타가 합리적인 범위인지 확인 (예: 100m 이하)
+              // GPS 오류로 인한 급격한 위치 변화 방지
+              if (distanceDelta < 100) {
+                addDistance(distanceDelta);
+              } else if (__DEV__) {
+                console.warn('[RunTracker] 비정상적인 거리 변화 감지, 무시:', distanceDelta, 'm');
+              }
             }
 
-            lastLocationRef.current = { lat: latitude, lng: longitude };
+            lastLocationRef.current = { 
+              lat: formattedLocation.lat, 
+              lng: formattedLocation.lng 
+            };
           }
         );
       })();
@@ -88,6 +118,7 @@ export function useRunningTracker() {
         // 완전히 종료된 경우만 시간 초기화
         lastLocationRef.current = null;
         startTimeRef.current = null;
+        locationBufferRef.current.reset();
       }
     }
 
@@ -104,6 +135,7 @@ export function useRunningTracker() {
   return {
     start: () => {
       startTimeRef.current = null;
+      locationBufferRef.current.reset();
       start();
     },
     pause: () => {
@@ -115,21 +147,7 @@ export function useRunningTracker() {
     stop: () => {
       stop();
       startTimeRef.current = null;
+      locationBufferRef.current.reset();
     },
   };
-}
-
-// 두 좌표 간 거리 계산 (Haversine 공식)
-function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371000; // 지구 반지름 (미터)
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // 미터 단위
 }

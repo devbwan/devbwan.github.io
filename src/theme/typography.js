@@ -1,18 +1,29 @@
+// Mandatory Typography Rules - DO NOT CHANGE
+import { colors } from './colors';
+
 export const typography = {
-  fontSize: {
-    xs: 12,
-    sm: 14,
-    md: 16,
-    lg: 18,
-    xl: 20,
-    xxl: 24,
-    xxxl: 32,
+  h1: { 
+    fontSize: 32, 
+    fontWeight: "700", 
+    fontFamily: "Inter-Bold" 
   },
-  fontWeight: {
-    regular: '400',
-    medium: '500',
-    semibold: '600',
-    bold: '700',
+  h2: { 
+    fontSize: 24, 
+    fontWeight: "600", 
+    fontFamily: "Inter-SemiBold" 
+  },
+  body: { 
+    fontSize: 16, 
+    fontFamily: "Inter-Regular" 
+  },
+  caption: { 
+    fontSize: 13, 
+    color: colors.textLight,
+    fontFamily: "Inter-Regular"
+  },
+  stat: { 
+    fontSize: 40, 
+    fontWeight: "700", 
+    fontFamily: "Inter-Bold" 
   },
 };
-

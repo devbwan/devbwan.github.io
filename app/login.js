@@ -2,11 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Button, Card, Surface } from 'react-native-paper';
 import { useRouter } from 'expo-router';
-import { useAuthStore } from '../src/stores/authStore';
-import { signInWithGoogle } from '../src/services/authService';
-import { auth } from '../src/config/firebase';
-import { getRedirectResult } from 'firebase/auth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuthStore, signInWithGoogleToken, useGoogleLogin } from '../src/features/auth';
 import { Platform } from 'react-native';
 import { spacing, typography, colors } from '../src/theme';
 
@@ -18,76 +14,103 @@ export default function LoginScreen() {
   const { signIn } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  
+  // Google Login 훅 (모바일 환경에서 사용)
+  const { request, response, promptAsync } = useGoogleLogin();
 
-  // 페이지 로드 시 redirect 결과만 확인 (팝업을 열지 않음)
+  // Google OAuth 응답 처리 (모든 플랫폼)
   useEffect(() => {
-    const checkRedirectResult = async () => {
-      // 웹 환경이 아니면 redirect 결과 확인 스킵
-      if (Platform.OS !== 'web' || !auth) {
-        return;
-      }
+    const handleGoogleResponse = async () => {
+      if (response?.type === 'success') {
+        setLoading(true);
+        setError(null);
+        try {
+          if (__DEV__) {
+            console.log('[Login] ========== Google 로그인 처리 시작 ==========');
+            console.log('[Login] Response Type:', response.type);
+            console.log('[Login] ID Token Present:', !!response.params?.id_token);
+          }
 
-      try {
-        // redirect 결과만 확인 (팝업을 열지 않음)
-        const redirectResult = await getRedirectResult(auth);
-        if (redirectResult) {
-          setLoading(true);
-          const user = {
-            id: redirectResult.user.uid,
-            email: redirectResult.user.email,
-            name: redirectResult.user.displayName,
-            photoURL: redirectResult.user.photoURL,
-          };
+          // Google OAuth 응답에서 ID 토큰을 받아 Firebase에 로그인
+          // response.params.id_token에서 ID 토큰을 가져옴 (responseType: "id_token" 사용)
+          const user = await signInWithGoogleToken(response);
+          const mergeResult = await signIn(user, 'google');
           
-          await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
-          await AsyncStorage.setItem(AUTH_PROVIDER_KEY, 'google');
+          // 데이터 병합 결과 알림 (선택적)
+          if (mergeResult && (mergeResult.sessionsMerged > 0 || mergeResult.rewardsMerged > 0)) {
+            const message = `게스트 모드에서 생성한 데이터가 병합되었습니다.\n세션: ${mergeResult.sessionsMerged}개, 메달: ${mergeResult.rewardsMerged}개`;
+            if (__DEV__) {
+              console.log('[Login]', message);
+            }
+          }
           
-          await signIn(user, 'google');
+          if (__DEV__) {
+            console.log('[Login] ✅ 로그인 성공, 프로필 화면으로 이동');
+            console.log('[Login] ======================================');
+          }
+          
           router.replace('/(tabs)/profile');
-        }
-      } catch (err) {
-        // redirect 결과가 없거나 오류가 발생한 경우 무시 (정상적인 로그인 흐름)
-        if (__DEV__) {
-          console.log('[Login] Redirect 결과 없음 (정상)');
-        }
-      } finally {
-        if (loading) {
+        } catch (err) {
+          console.error('[Login] ❌ Google 로그인 실패:', err);
+          console.error('[Login] Error Code:', err.code);
+          console.error('[Login] Error Message:', err.message);
+          
+          // 구체적인 오류 메시지 제공
+          if (err.message?.includes('Firebase 설정') || err.message?.includes('초기화')) {
+            setError('Firebase 설정이 필요합니다.\n\n1. Firebase Console에서 프로젝트 생성\n2. Authentication > Sign-in method에서 Google 활성화\n3. src/config/firebase.js에 설정 정보 입력\n\n현재는 게스트 모드로 진행하세요.');
+          } else if (err.message?.includes('operation-not-allowed')) {
+            setError('Firebase Console에서 Google 인증을 활성화해주세요.');
+          } else if (err.message?.includes('ID 토큰')) {
+            setError('Google 로그인 토큰을 받지 못했습니다.\n\n가능한 원인:\n1. Google Cloud Console에서 OAuth 동의 화면 설정 확인\n2. 테스트 사용자로 등록되지 않은 계정 사용\n3. 네트워크 연결 확인');
+          } else {
+            setError(err.message || 'Google 로그인에 실패했습니다. 다시 시도해주세요.');
+          }
+        } finally {
           setLoading(false);
         }
+      } else if (response?.type === 'error') {
+        console.error('[Login] Google OAuth 오류:', response);
+        const errorMessage = response.error?.message || response.error?.code || '알 수 없는 오류';
+        const errorCode = response.error?.code;
+        
+        // 구체적인 오류 메시지 제공
+        let userMessage = 'Google 로그인에 실패했습니다.';
+        if (errorCode === 'access_denied' || errorMessage?.includes('access_denied') || errorMessage?.includes('승인')) {
+          userMessage = 'Google 로그인이 거부되었습니다.\n\n가능한 원인:\n1. Google Cloud Console에서 OAuth 동의 화면 설정 확인\n2. Authorized redirect URIs에 Firebase Hosting URL 추가 필요\n3. 테스트 사용자로 등록되지 않은 계정 사용';
+        } else if (errorCode === 'invalid_client') {
+          userMessage = 'OAuth Client ID가 올바르지 않습니다.\n\n환경 변수 EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID를 확인하세요.';
+        } else if (errorCode === 'redirect_uri_mismatch') {
+          userMessage = 'Redirect URI가 일치하지 않습니다.\n\nGoogle Cloud Console > OAuth 2.0 클라이언트 ID > Authorized redirect URIs에 다음을 추가하세요:\nhttps://runningapp-a0bff.firebaseapp.com/__/auth/handler';
+        }
+        
+        setError(`${userMessage}\n\n오류 코드: ${errorCode || 'N/A'}\n오류 메시지: ${errorMessage}`);
+        setLoading(false);
+      } else if (response?.type === 'cancel' || response?.type === 'dismiss') {
+        setError(null);
+        setLoading(false);
       }
     };
 
-    checkRedirectResult();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (response) {
+      handleGoogleResponse();
+    }
+  }, [response, signIn, router]);
+
 
   const handleGoogleLogin = async () => {
+    // 모든 플랫폼에서 useGoogleLogin 훅 사용 (credential 기반)
+    if (!request) {
+      setError('Google 로그인 요청을 준비할 수 없습니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     try {
-      const user = await signInWithGoogle();
-      const mergeResult = await signIn(user, 'google');
-      
-      // 데이터 병합 결과 알림 (선택적)
-      if (mergeResult && (mergeResult.sessionsMerged > 0 || mergeResult.rewardsMerged > 0)) {
-        const message = `게스트 모드에서 생성한 데이터가 병합되었습니다.\n세션: ${mergeResult.sessionsMerged}개, 메달: ${mergeResult.rewardsMerged}개`;
-        if (__DEV__) {
-          console.log('[Login]', message);
-        }
-      }
-      
-      router.replace('/(tabs)/profile');
+      await promptAsync();
     } catch (err) {
-      console.error('Google 로그인 실패:', err);
-      // 에러 메시지에 따라 다른 메시지 표시
-      if (err.message?.includes('Firebase 설정') || err.message?.includes('초기화')) {
-        setError('Firebase 설정이 필요합니다.\n\n1. Firebase Console에서 프로젝트 생성\n2. Authentication > Sign-in method에서 Google 활성화\n3. src/config/firebase.js에 설정 정보 입력\n\n현재는 게스트 모드로 진행하세요.');
-      } else if (err.message?.includes('operation-not-allowed')) {
-        setError('Firebase Console에서 Google 인증을 활성화해주세요.');
-      } else {
-        setError(err.message || 'Google 로그인에 실패했습니다. 다시 시도해주세요.');
-      }
-    } finally {
+      console.error('Google 로그인 프롬프트 오류:', err);
+      setError('Google 로그인을 시작할 수 없습니다. 다시 시도해주세요.');
       setLoading(false);
     }
   };
@@ -175,15 +198,17 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   title: {
-    fontSize: typography.fontSize.xxxl,
-    fontWeight: typography.fontWeight.bold,
+    fontSize: typography.h1.fontSize,
+    fontWeight: typography.h1.fontWeight,
     color: colors.primary,
     marginBottom: spacing.sm,
+    fontFamily: typography.h1.fontFamily,
   },
   subtitle: {
-    fontSize: typography.fontSize.md,
+    fontSize: typography.body.fontSize,
     color: '#666',
     textAlign: 'center',
+    fontFamily: typography.body.fontFamily,
   },
   errorContainer: {
     backgroundColor: '#ffebee',
@@ -193,8 +218,9 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: colors.error,
-    fontSize: typography.fontSize.sm,
+    fontSize: typography.caption.fontSize,
     textAlign: 'center',
+    fontFamily: typography.caption.fontFamily,
   },
   buttonsContainer: {
     gap: spacing.md,
@@ -231,15 +257,17 @@ const styles = StyleSheet.create({
   },
   dividerText: {
     marginHorizontal: spacing.md,
-    fontSize: typography.fontSize.sm,
+    fontSize: typography.caption.fontSize,
     color: '#666',
+    fontFamily: typography.caption.fontFamily,
   },
   infoText: {
-    fontSize: typography.fontSize.xs,
+    fontSize: 12,
     color: '#666',
     textAlign: 'center',
     marginTop: spacing.sm,
     lineHeight: 18,
+    fontFamily: typography.caption.fontFamily,
   },
   loadingOverlay: {
     position: 'absolute',
@@ -255,15 +283,17 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: spacing.md,
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.medium,
+    fontSize: typography.body.fontSize,
+    fontWeight: '500',
     color: '#000',
+    fontFamily: typography.body.fontFamily,
   },
   loadingSubtext: {
     marginTop: spacing.xs,
-    fontSize: typography.fontSize.sm,
+    fontSize: typography.caption.fontSize,
     color: '#666',
     textAlign: 'center',
+    fontFamily: typography.caption.fontFamily,
   },
 });
 

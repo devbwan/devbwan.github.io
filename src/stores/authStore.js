@@ -22,13 +22,42 @@ export const useAuthStore = create((set, get) => ({
       // Firebase Auth 상태 리스너 설정
       if (onAuthStateChange) {
         console.log('[AuthStore] Firebase Auth 리스너 설정');
-        onAuthStateChange((firebaseUser) => {
+        onAuthStateChange(async (firebaseUser) => {
           console.log('[AuthStore] Firebase Auth 상태 변경:', { hasUser: !!firebaseUser });
           if (firebaseUser) {
-            set({ user: firebaseUser });
+            const userData = {
+              id: firebaseUser.uid,
+              email: firebaseUser.email,
+              name: firebaseUser.displayName,
+              photoURL: firebaseUser.photoURL,
+            };
+            set({ user: userData });
+            
+            // Firestore에 사용자 정보 동기화 (비동기)
+            try {
+              const { syncUserToFirestore } = await import('../services/userSyncService');
+              await syncUserToFirestore(userData);
+            } catch (syncError) {
+              console.error('[AuthStore] Firestore 사용자 동기화 오류:', syncError);
+            }
+            
+            // 자동 토큰 갱신 시작 (비동기)
+            try {
+              const { startAutoTokenRefresh } = await import('../services/tokenRefreshService');
+              await startAutoTokenRefresh();
+            } catch (tokenError) {
+              console.error('[AuthStore] 자동 토큰 갱신 시작 오류:', tokenError);
+            }
           } else {
             // Firebase에서 로그아웃된 경우
             if (get().authProvider !== 'guest') {
+              // 자동 토큰 갱신 중지
+              try {
+                const { stopAutoTokenRefresh } = await import('../services/tokenRefreshService');
+                stopAutoTokenRefresh();
+              } catch (tokenError) {
+                console.error('[AuthStore] 자동 토큰 갱신 중지 오류:', tokenError);
+              }
               set({ user: null, authProvider: 'guest' });
             }
           }
@@ -64,6 +93,33 @@ export const useAuthStore = create((set, get) => ({
     await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
     await AsyncStorage.setItem(AUTH_PROVIDER_KEY, provider);
     
+    // Firestore에 사용자 정보 동기화 (비동기, 실패해도 로그인은 성공)
+    if (user && user.id && provider !== 'guest') {
+      try {
+        const { syncUserToFirestore } = await import('../services/userSyncService');
+        const syncResult = await syncUserToFirestore(user);
+        if (syncResult.success) {
+          if (__DEV__) {
+            console.log('[AuthStore] ✅ Firestore 사용자 동기화 완료:', syncResult.action);
+          }
+        }
+      } catch (syncError) {
+        console.error('[AuthStore] Firestore 사용자 동기화 오류:', syncError);
+        // 동기화 실패해도 로그인은 성공한 것으로 처리
+      }
+    }
+    
+    // 자동 토큰 갱신 시작 (비동기, 실패해도 로그인은 성공)
+    if (user && user.id && provider !== 'guest') {
+      try {
+        const { startAutoTokenRefresh } = await import('../services/tokenRefreshService');
+        await startAutoTokenRefresh();
+      } catch (tokenError) {
+        console.error('[AuthStore] 자동 토큰 갱신 시작 오류:', tokenError);
+        // 토큰 갱신 실패해도 로그인은 성공한 것으로 처리
+      }
+    }
+    
     // 게스트 모드에서 로그인한 경우 데이터 병합
     if (wasGuest && user && user.id) {
       try {
@@ -82,6 +138,16 @@ export const useAuthStore = create((set, get) => ({
 
   signOut: async () => {
     try {
+      // 자동 토큰 갱신 중지
+      try {
+        const { stopAutoTokenRefresh, resetTokenRefresh } = await import('../services/tokenRefreshService');
+        stopAutoTokenRefresh();
+        await resetTokenRefresh();
+      } catch (tokenError) {
+        console.error('토큰 갱신 중지 오류:', tokenError);
+        // 토큰 갱신 중지 실패해도 로그아웃은 진행
+      }
+      
       // Firebase 로그아웃 및 AsyncStorage 정리
       await authServiceSignOut();
     } catch (error) {

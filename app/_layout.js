@@ -4,7 +4,9 @@ import { Slot } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Provider as PaperProvider, MD3LightTheme as DefaultTheme } from 'react-native-paper';
-import { useAuthStore } from '../src/stores/authStore';
+import { useAuthStore } from '../src/features/auth';
+import AuthGuard from '../src/components/AuthGuard';
+import { useAppFonts } from '../src/utils/fontLoader';
 import { spacing, colors } from '../src/theme';
 
 const theme = {
@@ -129,6 +131,7 @@ export default function RootLayout() {
   const initialize = useAuthStore((state) => state.initialize);
   const isLoading = useAuthStore((state) => state.isLoading);
   const [initError, setInitError] = useState(null);
+  const { fontsLoaded, fontError } = useAppFonts();
 
   useEffect(() => {
     console.log('[RootLayout] 초기화 시작');
@@ -144,6 +147,24 @@ export default function RootLayout() {
     init();
   }, [initialize]);
 
+  // 폰트 로딩 중이면 로딩 화면 표시
+  if (!fontsLoaded) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <PaperProvider theme={theme}>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={{ marginTop: spacing.md, color: colors.text, fontFamily: 'Inter-Regular' }}>
+                폰트를 로딩하는 중...
+              </Text>
+            </View>
+          </PaperProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
   // 초기화 중이면 로딩 화면 표시
   if (isLoading) {
     console.log('[RootLayout] 로딩 중...');
@@ -151,9 +172,11 @@ export default function RootLayout() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <PaperProvider theme={theme}>
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
               <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={{ marginTop: spacing.md, color: '#666' }}>앱을 시작하는 중...</Text>
+              <Text style={{ marginTop: spacing.md, color: colors.text, fontFamily: 'Inter-Regular' }}>
+                앱을 시작하는 중...
+              </Text>
             </View>
           </PaperProvider>
         </SafeAreaProvider>
@@ -168,11 +191,11 @@ export default function RootLayout() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <PaperProvider theme={theme}>
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff', padding: spacing.lg }}>
-              <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: spacing.md, color: '#F44336' }}>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, padding: spacing.lg }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: spacing.md, color: colors.error, fontFamily: 'Inter-Bold' }}>
                 오류 발생
               </Text>
-              <Text style={{ color: '#666', textAlign: 'center' }}>{initError}</Text>
+              <Text style={{ color: colors.text, textAlign: 'center', fontFamily: 'Inter-Regular' }}>{initError}</Text>
             </View>
           </PaperProvider>
         </SafeAreaProvider>
@@ -185,7 +208,9 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <PaperProvider theme={theme}>
-          <Slot />
+          <AuthGuard requireAuth={false}>
+            <Slot />
+          </AuthGuard>
         </PaperProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -1,21 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Platform, Alert, TouchableOpacity } from 'react-native';
-import { Button, Card, Surface, IconButton } from 'react-native-paper';
+import { View, Text, StyleSheet, Platform, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Speech from 'expo-speech';
-import { useLocationPermission } from '../../src/hooks/useLocationPermission';
-import { useRunningTracker } from '../../src/hooks/useRunningTracker';
-import { useRunStore } from '../../src/stores/runStore';
-import { useAuthStore } from '../../src/stores/authStore';
+import { 
+  useLocationPermission, 
+  useRunningTracker, 
+  useRunStore,
+  saveRunningSession,
+  syncRunningSession,
+  saveRunningSessionToHealth,
+  checkRewards
+} from '../../src/features/run';
+import { useAuthStore } from '../../src/features/auth';
+import { getUserStats } from '../../src/features/stats';
+import { getUserRewards, saveReward } from '../../src/features/profile';
+import { getTodayStats } from '../../src/features/stats';
 import { RunMapView } from '../../src/components/MapView';
-import { saveRunningSession } from '../../src/db/sessionRepository';
-import { getUserStats } from '../../src/db/statsRepository';
-import { getUserRewards, saveReward } from '../../src/db/rewardsRepository';
-import { syncRunningSession } from '../../src/services/sessionSyncService';
-import { saveRunningSessionToHealth } from '../../src/services/healthService';
-import { checkRewards } from '../../src/utils/rewardSystem';
-import { spacing, typography, colors } from '../../src/theme';
+import { PageContainer, Button, Card, Spacer, StatNumber, MapPreview } from '../../src/components/ui';
+import { colors, spacing, typography } from '../../src/theme';
 
 export default function RunScreen() {
   const router = useRouter();
@@ -27,94 +31,66 @@ export default function RunScreen() {
   const [calories, setCalories] = useState(0);
   const { user } = useAuthStore();
   const [saving, setSaving] = useState(false);
-  const [courseMode, setCourseMode] = useState(false);
-  const [courseRoute, setCourseRoute] = useState([]);
-  const [voiceGuideEnabled, setVoiceGuideEnabled] = useState(true);
-  // 기본 위치(서울)로 초기화하여 지도를 먼저 표시
+  const [lastRunStats, setLastRunStats] = useState(null);
   const [initialLocation, setInitialLocation] = useState({
     lat: 37.5665,
     lng: 126.978,
   });
-  const [locationLoading, setLocationLoading] = useState(false);
   const lastAnnouncedKm = useRef(0);
 
-  // 러닝 탭 진입 시 현재 위치 가져오기
   useFocusEffect(
     React.useCallback(() => {
-      const getCurrentLocation = async () => {
-        if (!granted) {
-          // 권한이 없으면 기본 위치(서울) 유지
-          return;
-        }
-        
-        setLocationLoading(true);
-        try {
-          // 타임아웃 설정 (5초로 단축)
-          const locationPromise = Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-            timeout: 5000,
-          });
-          
-          const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('위치 정보 요청 시간 초과')), 5000);
-          });
-          
-          const location = await Promise.race([locationPromise, timeoutPromise]);
-          
-          setInitialLocation({
-            lat: location.coords.latitude,
-            lng: location.coords.longitude,
-          });
-        } catch (error) {
-          console.error('[Run] 현재 위치 가져오기 실패:', error);
-          // 실패 시 기본 위치(서울) 유지
-        } finally {
-          setLocationLoading(false);
-        }
-      };
-
-      // 권한 확인이 완료된 후에만 위치 가져오기
-      if (permissionLoading === false) {
+      loadLastRun();
+      if (granted && permissionLoading === false) {
         getCurrentLocation();
       }
     }, [granted, permissionLoading])
   );
 
-  // 코스 모드 확인
-  useEffect(() => {
-    if (params.courseId) {
-      // 코스 데이터 로드 (임시 데이터)
-      const mockCourse = {
-        id: params.courseId,
-        coordinates: [
-          { lat: 37.5295, lng: 126.9344 },
-          { lat: 37.5320, lng: 126.9400 },
-          { lat: 37.5350, lng: 126.9450 },
-          { lat: 37.5380, lng: 126.9500 },
-          { lat: 37.5410, lng: 126.9550 },
-          { lat: 37.5440, lng: 126.9600 },
-          { lat: 37.5470, lng: 126.9650 },
-          { lat: 37.5500, lng: 126.9700 },
-          { lat: 37.5530, lng: 126.9750 },
-          { lat: 37.5560, lng: 126.9800 },
-          { lat: 37.5590, lng: 126.9850 },
-          { lat: 37.5610, lng: 126.9900 },
-        ],
-      };
-      setCourseRoute(
-        mockCourse.coordinates.map((coord, index) => ({
-          lat: coord.lat,
-          lng: coord.lng,
-          timestamp: Date.now() + index * 1000,
-        }))
-      );
-      setCourseMode(true);
+  const loadLastRun = async () => {
+    try {
+      const stats = await getTodayStats(user?.id || null);
+      if (stats.runs > 0) {
+        setLastRunStats(stats);
+      }
+    } catch (error) {
+      console.error('마지막 러닝 로드 실패:', error);
     }
-  }, [params.courseId]);
+  };
+
+  const getCurrentLocation = async () => {
+    try {
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+        timeout: 5000,
+      });
+      setInitialLocation({
+        lat: location.coords.latitude,
+        lng: location.coords.longitude,
+      });
+    } catch (error) {
+      console.error('[Run] 현재 위치 가져오기 실패:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (isRunning && duration > 0 && distance > 0) {
+      const avgPaceValue = Math.round((duration / distance) * 1000);
+      setAvgPace(avgPaceValue);
+      const weight = 70;
+      const speed = duration > 0 ? (distance / 1000) / (duration / 3600) : 0;
+      let met = 6;
+      if (speed < 6) met = 8;
+      else if (speed < 8) met = 9.5;
+      else if (speed < 10) met = 11.5;
+      else met = 14.5;
+      setCalories(Math.round((weight * met * duration) / 3600));
+    }
+  }, [isRunning, distance, duration]);
 
   const formatDistance = (meters) => {
-    if (meters < 1000) return `${Math.round(meters)}m`;
-    return `${(meters / 1000).toFixed(2)}km`;
+    if (meters < 1000) return `${Math.round(meters)}`;
+    return `${(meters / 1000).toFixed(2)}`;
   };
 
   const formatTime = (seconds) => {
@@ -129,88 +105,8 @@ export default function RunScreen() {
     if (!secPerKm || secPerKm === 0) return '--:--';
     const mins = Math.floor(secPerKm / 60);
     const secs = Math.round(secPerKm % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}/km`;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
-
-  const calculateCalories = (distance, duration) => {
-    // 간단한 칼로리 계산 공식 (몸무게 70kg 기준, 러닝 속도 10km/h 가정)
-    const weight = 70; // kg
-    const speed = duration > 0 ? (distance / 1000) / (duration / 3600) : 0; // km/h
-    // MET 값은 속도에 따라 달라짐 (5km/h: 8, 8km/h: 11.5, 10km/h: 14.5)
-    let met = 6;
-    if (speed < 6) met = 8;
-    else if (speed < 8) met = 9.5;
-    else if (speed < 10) met = 11.5;
-    else met = 14.5;
-    
-    const calories = (weight * met * duration) / 3600;
-    return Math.round(calories);
-  };
-
-  const formatCadence = (stepsPerMin) => {
-    if (!stepsPerMin || stepsPerMin === 0) return '--';
-    return `${stepsPerMin}`;
-  };
-
-  // 평균 페이스 및 칼로리 실시간 업데이트
-  useEffect(() => {
-    if (isRunning && duration > 0 && distance > 0) {
-      // 평균 페이스 계산
-      const avgPaceValue = Math.round((duration / distance) * 1000);
-      setAvgPace(avgPaceValue);
-      
-      // 칼로리 계산
-      const cal = calculateCalories(distance, duration);
-      setCalories(cal);
-      
-      // 케이던스 업데이트
-      useRunStore.getState().updateCadence();
-    } else if (!isRunning) {
-      setAvgPace(0);
-      setCalories(0);
-      lastAnnouncedKm.current = 0; // 러닝 종료 시 초기화
-    }
-  }, [isRunning, distance, duration]);
-
-  // 음성 가이드: 1km마다 알림
-  useEffect(() => {
-    if (!isRunning || !voiceGuideEnabled || distance < 1000) {
-      return;
-    }
-
-    const currentKm = Math.floor(distance / 1000);
-    const lastKm = lastAnnouncedKm.current;
-
-    // 1km 단위로 증가했을 때만 알림
-    if (currentKm > lastKm) {
-      lastAnnouncedKm.current = currentKm;
-      
-      // 음성 알림 생성
-      const paceInKm = avgPace > 0 ? avgPace : (pace > 0 ? pace : 0);
-      const paceMin = Math.floor(paceInKm / 60);
-      const paceSec = Math.round(paceInKm % 60);
-      const paceText = paceInKm > 0 ? `${paceMin}분 ${paceSec}초` : '';
-      
-      const message = `현재 ${currentKm}킬로미터를 달렸습니다. ${paceText ? `페이스 ${paceText} 킬로미터` : ''}`;
-      
-      // expo-speech 사용 (웹에서는 Web Speech API 사용)
-      if (Platform.OS === 'web') {
-        if ('speechSynthesis' in window) {
-          const utterance = new SpeechSynthesisUtterance(message);
-          utterance.lang = 'ko-KR';
-          utterance.rate = 1.0;
-          utterance.pitch = 1.0;
-          window.speechSynthesis.speak(utterance);
-        }
-      } else {
-        Speech.speak(message, {
-          language: 'ko-KR',
-          pitch: 1.0,
-          rate: 1.0,
-        });
-      }
-    }
-  }, [isRunning, distance, voiceGuideEnabled, avgPace, pace]);
 
   const handleStart = () => {
     start();
@@ -225,559 +121,223 @@ export default function RunScreen() {
   };
 
   const handleStop = async () => {
-    console.log('[Run] 종료 버튼 클릭됨');
-    console.log('[Run] 현재 상태:', { distance, duration, isRunning, isPaused, saving });
+    if (saving) return;
     
-    // 저장 중이면 무시
-    if (saving) {
-      console.log('[Run] 저장 중이므로 종료 무시');
-      return;
-    }
-    
-    try {
-      // 50미터 이하는 저장하지 않고 바로 종료
-      if (distance < 50) {
-        console.log('[Run] 거리 50m 미만 - 바로 종료');
-        
-        // Android 호환성을 위해 Promise로 래핑
-        const result = await new Promise((resolve) => {
-          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
-            const confirmed = window.confirm(
-              `${formatDistance(distance)}, ${formatTime(duration)} 러닝하셨습니다.\n거리가 50m 미만이라 저장되지 않습니다.\n종료하시겠습니까?`
-            );
-            resolve(confirmed);
-          } else {
-            Alert.alert(
-              '러닝 종료',
-              `${formatDistance(distance)}, ${formatTime(duration)} 러닝하셨습니다.\n거리가 50m 미만이라 저장되지 않습니다.`,
-              [
-                {
-                  text: '확인',
-                  onPress: () => resolve(true),
-                },
-                {
-                  text: '취소',
-                  style: 'cancel',
-                  onPress: () => resolve(false),
-                },
-              ],
-              { cancelable: true, onDismiss: () => resolve(false) }
-            );
-          }
-        });
-        
-        if (result) {
-          console.log('[Run] 상태 리셋');
-          stop(); // useRunningTracker의 stop 호출
-          useRunStore.getState().reset();
-        }
-        return;
-      }
-
-      // 50미터 이상은 사용자에게 저장 여부 확인
-      console.log('[Run] 거리 50m 이상 - 저장 여부 확인');
-      
-      const saveResult = await new Promise((resolve) => {
+    if (distance < 50) {
+      const result = await new Promise((resolve) => {
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
-          const shouldSave = window.confirm(
-            `총 ${formatDistance(distance)}, ${formatTime(duration)} 러닝하셨습니다.\n저장하시겠습니까?`
-          );
-          resolve(shouldSave ? 'save' : 'discard');
+          resolve(window.confirm('거리가 50m 미만입니다. 종료하시겠습니까?'));
         } else {
-          Alert.alert(
-            '러닝 종료',
-            `총 ${formatDistance(distance)}, ${formatTime(duration)} 러닝하셨습니다.\n저장하시겠습니까?`,
-            [
-              {
-                text: '저장 안 함',
-                style: 'destructive',
-                onPress: () => resolve('discard'),
-              },
-              {
-                text: '저장',
-                onPress: () => resolve('save'),
-              },
-              {
-                text: '취소',
-                style: 'cancel',
-                onPress: () => resolve('cancel'),
-              },
-            ],
-            { cancelable: true, onDismiss: () => resolve('cancel') }
-          );
+          Alert.alert('러닝 종료', '거리가 50m 미만입니다.', [
+            { text: '취소', onPress: () => resolve(false) },
+            { text: '확인', onPress: () => resolve(true) },
+          ]);
         }
       });
-      
-      if (saveResult === 'cancel') {
-        console.log('[Run] 사용자가 취소');
-        return;
-      }
-      
-      if (saveResult === 'discard') {
-        console.log('[Run] 저장 안 함 - 상태 리셋');
-        stop(); // useRunningTracker의 stop 호출
+      if (result) {
+        stop();
         useRunStore.getState().reset();
-        return;
       }
-      
-      // 저장하기
-      console.log('[Run] 저장 시작');
-      setSaving(true);
-      
-      try {
-        const endTime = Date.now();
-              const caloriesValue = calculateCalories(distance, duration);
-              const finalAvgPace = avgPace > 0 ? avgPace : (pace > 0 ? pace : null);
-              
-              // 로컬 저장
-              const sessionId = await saveRunningSession(
-                {
-                  userId: user?.id || null,
-                  type: 'solo',
-                  distance,
-                  duration,
-                  avgPace: finalAvgPace,
-                  maxSpeed: maxSpeed > 0 ? maxSpeed : null,
-                  calories: caloriesValue,
-                  cadence: cadence > 0 ? cadence : null,
-                  startTime: Math.floor(startTime / 1000),
-                  endTime: Math.floor(endTime / 1000),
-                },
-                route
-              );
+      return;
+    }
 
-              // 클라우드 동기화 (로그인한 사용자만)
-              if (user?.id) {
-                try {
-                  await syncRunningSession(
-                    {
-                      userId: user.id,
-                      type: 'solo',
-                      distance,
-                      duration,
-                      avgPace: finalAvgPace,
-                      maxSpeed: maxSpeed > 0 ? maxSpeed : null,
-                      calories: caloriesValue,
-                      cadence: cadence > 0 ? cadence : null,
-                      startTime: Math.floor(startTime / 1000),
-                      endTime: Math.floor(endTime / 1000),
-                    },
-                    route
-                  );
-                } catch (syncError) {
-                  console.warn('클라우드 동기화 실패 (로컬 저장은 완료):', syncError);
-                }
-              }
-
-              // 건강 앱 동기화 (선택적)
-              try {
-                const healthResult = await saveRunningSessionToHealth({
-                  distance,
-                  duration,
-                  calories: caloriesValue,
-                  startTime: Math.floor(startTime / 1000),
-                  endTime: Math.floor(endTime / 1000),
-                  avgPace: finalAvgPace,
-                  cadence: cadence > 0 ? cadence : null,
-                });
-                if (healthResult.success) {
-                  console.log('건강 앱 동기화 완료');
-                } else if (healthResult.needsSetup) {
-                  console.log('건강 앱 연동 설정 필요:', healthResult.message);
-                }
-              } catch (healthError) {
-                console.warn('건강 앱 동기화 실패 (로컬 저장은 완료):', healthError);
-              }
-
-              // 메달 체크
-              const [updatedStats, achievedRewards] = await Promise.all([
-                getUserStats(user?.id || null),
-                getUserRewards(user?.id || null),
-              ]);
-              
-              const { newRewards } = checkRewards(updatedStats, achievedRewards);
-              
-              // 새로운 메달 저장
-              if (newRewards.length > 0) {
-                await Promise.all(
-                  newRewards.map((reward) => saveReward(user?.id || null, reward.id))
-                );
-              }
-
-              // 상태 리셋
-              stop(); // useRunningTracker의 stop 호출
-              useRunStore.getState().reset();
-              
-              console.log('[Run] 저장 완료, 메달 체크:', newRewards.length);
-              
-              // 메달 획득 시 특별 메시지
-              if (newRewards.length > 0) {
-                const rewardTitles = newRewards.map((r) => r.title).join(', ');
-                
-                const medalResult = await new Promise((resolve) => {
-                  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
-                    const upload = window.confirm(
-                      `${rewardTitles} 메달을 획득하셨습니다!\n\n코스로 업로드하시겠습니까?`
-                    );
-                    resolve(upload ? 'upload' : 'ok');
-                  } else {
-                    Alert.alert(
-                      '메달 획득! 🎉',
-                      `${rewardTitles} 메달을 획득하셨습니다!`,
-                      [
-                        { 
-                          text: '코스로 업로드', 
-                          onPress: () => resolve('upload'),
-                        },
-                        { text: '확인', onPress: () => resolve('ok') },
-                      ],
-                      { cancelable: false }
-                    );
-                  }
-                });
-                
-                if (medalResult === 'upload') {
-                  router.push({
-                    pathname: '/(tabs)/courses',
-                    params: { 
-                      uploadRoute: JSON.stringify(route),
-                      uploadDistance: distance.toString(),
-                    },
-                  });
-                } else {
-                  router.push('/(tabs)/records');
-                }
-              } else {
-                const saveCompleteResult = await new Promise((resolve) => {
-                  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
-                    const upload = window.confirm(
-                      '러닝 기록이 저장되었습니다.\n\n코스로 업로드하시겠습니까?'
-                    );
-                    resolve(upload ? 'upload' : 'ok');
-                  } else {
-                    Alert.alert(
-                      '저장 완료', 
-                      '러닝 기록이 저장되었습니다.',
-                      [
-                        { 
-                          text: '코스로 업로드', 
-                          onPress: () => resolve('upload'),
-                        },
-                        { text: '확인', onPress: () => resolve('ok') },
-                      ],
-                      { cancelable: false }
-                    );
-                  }
-                });
-                
-                if (saveCompleteResult === 'upload') {
-                  router.push({
-                    pathname: '/(tabs)/courses',
-                    params: { 
-                      uploadRoute: JSON.stringify(route),
-                      uploadDistance: distance.toString(),
-                    },
-                  });
-                } else {
-                  router.push('/(tabs)/records');
-                }
-              }
-      } catch (error) {
-        console.error('[Run] 저장 실패:', error);
-        Alert.alert('저장 실패', `기록 저장 중 오류가 발생했습니다.\n\n${error.message || '알 수 없는 오류'}`);
-      } finally {
-        setSaving(false);
-        stop(); // useRunningTracker의 stop 호출
+    const saveResult = await new Promise((resolve) => {
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
+        resolve(window.confirm('러닝을 종료하고 저장하시겠습니까?') ? 'save' : 'discard');
+      } else {
+        Alert.alert('러닝 종료', '저장하시겠습니까?', [
+          { text: '저장 안 함', onPress: () => resolve('discard') },
+          { text: '저장', onPress: () => resolve('save') },
+          { text: '취소', style: 'cancel', onPress: () => resolve('cancel') },
+        ]);
       }
+    });
+
+    if (saveResult === 'cancel') return;
+    if (saveResult === 'discard') {
+      stop();
+      useRunStore.getState().reset();
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const endTime = Date.now();
+      const caloriesValue = calories;
+      const finalAvgPace = avgPace > 0 ? avgPace : (pace > 0 ? pace : null);
+
+      await saveRunningSession(
+        {
+          userId: user?.id || null,
+          type: 'solo',
+          distance,
+          duration,
+          avgPace: finalAvgPace,
+          maxSpeed: maxSpeed > 0 ? maxSpeed : null,
+          calories: caloriesValue,
+          cadence: cadence > 0 ? cadence : null,
+          startTime: Math.floor(startTime / 1000),
+          endTime: Math.floor(endTime / 1000),
+        },
+        route
+      );
+
+      if (user?.id) {
+        try {
+          await syncRunningSession(
+            {
+              userId: user.id,
+              type: 'solo',
+              distance,
+              duration,
+              avgPace: finalAvgPace,
+              maxSpeed: maxSpeed > 0 ? maxSpeed : null,
+              calories: caloriesValue,
+              cadence: cadence > 0 ? cadence : null,
+              startTime: Math.floor(startTime / 1000),
+              endTime: Math.floor(endTime / 1000),
+            },
+            route
+          );
+        } catch (syncError) {
+          console.warn('클라우드 동기화 실패:', syncError);
+        }
+      }
+
+      stop();
+      useRunStore.getState().reset();
+      router.push('/(tabs)/records');
     } catch (error) {
-      console.error('[Run] 종료 처리 오류:', error);
-      Alert.alert('오류', `러닝 종료 중 오류가 발생했습니다.\n\n${error.message || '알 수 없는 오류'}`);
+      console.error('저장 실패:', error);
+      Alert.alert('저장 실패', error.message || '알 수 없는 오류');
+    } finally {
       setSaving(false);
     }
   };
 
-  // 권한 확인 중일 때만 로딩 화면 표시
-  // 위치 정보는 백그라운드에서 가져오고, 지도는 기본 위치로 먼저 표시
   if (permissionLoading) {
     return (
-      <View style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>위치 권한을 확인하는 중...</Text>
-        </View>
-      </View>
+      <PageContainer>
+        <Text style={styles.loadingText}>위치 권한을 확인하는 중...</Text>
+      </PageContainer>
     );
   }
 
+  if (granted === false) {
+    return (
+      <PageContainer>
+        <Text style={styles.errorText}>
+          GPS 권한이 필요합니다.{'\n'}
+          설정에서 위치 권한을 허용해주세요.
+        </Text>
+      </PageContainer>
+    );
+  }
+
+  // RunStartScreen Layout
+  if (!isRunning && !isPaused) {
+    return (
+      <PageContainer>
+        {lastRunStats && (
+          <>
+            <Card>
+              <View style={styles.lastRunStats}>
+                <StatNumber value={formatDistance(lastRunStats.distance)} label="거리" />
+                <StatNumber value={formatTime(lastRunStats.duration)} label="시간" />
+              </View>
+            </Card>
+            <Spacer height={spacing.lg} />
+          </>
+        )}
+        <Button fullWidth onPress={handleStart} disabled={saving}>
+          Start Running
+        </Button>
+      </PageContainer>
+    );
+  }
+
+  // RunActiveScreen Layout
   return (
-    <View style={styles.container}>
-      {granted !== false ? (
-        <>
-          <View style={styles.mapContainer}>
-            <RunMapView 
-              route={isRunning ? route : (courseMode ? courseRoute : [])} 
-              currentLocation={isRunning || initialLocation} 
-              initialLocation={initialLocation || { lat: 37.5665, lng: 126.978 }}
-            />
-            {courseMode && !isRunning && (
-              <View style={styles.courseModeBadge}>
-                <Text style={styles.courseModeText}>코스 모드</Text>
-              </View>
-            )}
-            <View style={styles.voiceGuideToggle}>
-              <IconButton
-                icon={voiceGuideEnabled ? 'volume-high' : 'volume-off'}
-                size={24}
-                onPress={() => setVoiceGuideEnabled(!voiceGuideEnabled)}
-                style={styles.voiceButton}
-                iconColor={voiceGuideEnabled ? '#fff' : '#999'}
-              />
-            </View>
-          </View>
+    <View style={styles.activeContainer}>
+      {/* Map Preview - full screen background */}
+      <View style={styles.mapContainer}>
+        <RunMapView 
+          route={isRunning ? route : []} 
+          currentLocation={isRunning && route.length > 0 ? route[route.length - 1] : null}
+          initialLocation={initialLocation}
+        />
+      </View>
 
-          <Surface style={styles.statsContainer} elevation={2}>
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>거리</Text>
-                <Text style={styles.statValue}>{formatDistance(distance)}</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>시간</Text>
-                <Text style={styles.statValue}>{formatTime(duration)}</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>페이스</Text>
-                <Text style={styles.statValue}>{formatPace(pace)}</Text>
-              </View>
-            </View>
-            {isRunning && (
-              <View style={styles.statsRow}>
-                <View style={styles.statItem}>
-                  <Text style={styles.statLabel}>평균 페이스</Text>
-                  <Text style={styles.statValue}>{formatPace(avgPace)}</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statLabel}>칼로리</Text>
-                  <Text style={styles.statValue}>{calories} kcal</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statLabel}>케이던스</Text>
-                  <Text style={styles.statValue}>{formatCadence(cadence)} spm</Text>
-                </View>
-              </View>
-            )}
-          </Surface>
+      {/* Stats and Controls - bottom overlay */}
+      <View style={styles.statsOverlay}>
+        <StatNumber value={formatTime(duration)} label="Time" />
+        <Spacer height={spacing.md} />
+        <StatNumber value={formatDistance(distance)} label="Distance" />
+        <Spacer height={spacing.md} />
+        <StatNumber value={formatPace(pace)} label="Pace" />
 
-          <View style={styles.controlsContainer}>
-            {!isRunning && !isPaused ? (
-              <TouchableOpacity
-                onPress={handleStart}
-                style={[styles.startButton, saving && styles.buttonDisabled]}
-                disabled={saving}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.startButtonText}>러닝 시작</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.runningControls}>
-                {isPaused ? (
-                  <TouchableOpacity
-                    onPress={handleResume}
-                    style={styles.resumeButton}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.controlButtonText}>재개</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    onPress={handlePause}
-                    style={styles.controlButton}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.controlButtonOutlinedText}>일시정지</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  onPress={() => {
-                    console.log('[Run] 종료 버튼 클릭 - handleStop 호출');
-                    handleStop();
-                  }}
-                  style={[styles.stopButton, saving && styles.buttonDisabled]}
-                  disabled={saving}
-                  activeOpacity={0.8}
-                >
-                  {saving ? (
-                    <Text style={styles.stopButtonText}>저장 중...</Text>
-                  ) : (
-                    <Text style={styles.stopButtonText}>종료</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        </>
-      ) : (
-        <View style={styles.permissionContainer}>
-          <Text style={styles.permissionText}>
-            GPS 권한이 필요합니다.{'\n'}
-            설정에서 위치 권한을 허용해주세요.
-          </Text>
-          <Text style={styles.statusText}>상태: {status ?? '요청 중...'}</Text>
-        </View>
-      )}
+        <Spacer height={spacing.xl} />
+
+        {isPaused ? (
+          <Button onPress={handleResume} disabled={saving}>
+            Resume
+          </Button>
+        ) : (
+          <Button onPress={handlePause} disabled={saving}>
+            Pause
+          </Button>
+        )}
+
+        <Spacer height={spacing.md} />
+
+        <Button onPress={handleStop} disabled={saving} loading={saving}>
+          End
+        </Button>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  activeContainer: {
     flex: 1,
+    backgroundColor: colors.background,
   },
   mapContainer: {
-    flex: 1,
-    ...(Platform.OS === 'web' && { minHeight: 400 }),
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 0,
   },
-  statsContainer: {
-    padding: spacing.lg,
-    backgroundColor: '#fff',
+  statsOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: spacing.md,
+    paddingTop: spacing.lg,
+    maxHeight: '60%',
+    zIndex: 1,
   },
-  statsRow: {
+  lastRunStats: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: spacing.sm,
-  },
-  statItem: {
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: typography.fontSize.sm,
-    color: '#666',
-    marginBottom: spacing.xs,
-  },
-  statValue: {
-    fontSize: typography.fontSize.xl,
-    fontWeight: typography.fontWeight.bold,
-    color: '#000',
-  },
-  controlsContainer: {
-    padding: spacing.lg,
-    backgroundColor: '#fff',
-  },
-  startButton: {
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: colors.primary,
-    justifyContent: 'center', // 세로 정렬 중앙
-    alignItems: 'center',     // 가로 정렬 중앙
-    elevation: 0, // Android 그림자 제거
-  },
-  startButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    includeFontPadding: false, // Android 폰트 패딩 제거
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  runningControls: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  controlButton: {
-    flex: 1,
-    height: 56,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    backgroundColor: 'transparent',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  controlButtonOutlinedText: {
-    color: colors.primary,
-    fontSize: 16,
-    fontWeight: '600',
-    includeFontPadding: false,
-  },
-  resumeButton: {
-    flex: 1,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: '#4CAF50',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 0,
-  },
-  controlButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    includeFontPadding: false,
-  },
-  stopButton: {
-    flex: 1,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: '#F44336',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 0,
-  },
-  stopButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    includeFontPadding: false,
-  },
-  permissionContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl,
-  },
-  permissionText: {
-    fontSize: typography.fontSize.md,
-    textAlign: 'center',
-    marginBottom: spacing.md,
-  },
-  statusText: {
-    fontSize: typography.fontSize.sm,
-    color: '#666',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl,
   },
   loadingText: {
-    fontSize: typography.fontSize.md,
-    color: '#666',
+    ...typography.body,
+    color: colors.textLight,
     textAlign: 'center',
+    fontFamily: typography.body.fontFamily,
   },
-  courseModeBadge: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    backgroundColor: '#FF7A00',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 20,
-  },
-  courseModeText: {
-    color: '#fff',
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.medium,
-  },
-  voiceGuideToggle: {
-    position: 'absolute',
-    top: spacing.md,
-    right: spacing.md,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: 24,
-    overflow: 'hidden',
-  },
-  voiceButton: {
-    margin: 0,
+  errorText: {
+    ...typography.body,
+    color: colors.textStrong,
+    textAlign: 'center',
+    fontFamily: typography.body.fontFamily,
   },
 });
