@@ -4,25 +4,28 @@ import { Tabs } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuthGuard from '../../src/components/AuthGuard';
-import { colors } from '../../src/theme';
+import { RunSessionProvider } from '../../src/contexts/RunSessionContext';
+import { colors, spacing } from '../../src/theme/tokens';
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   
   return (
     <AuthGuard requireAuth={false}>
+      <RunSessionProvider>
       <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.primary, // #0A84FF
+        tabBarActiveTintColor: colors.primary.light, // #0A84FF
         tabBarInactiveTintColor: colors.textLight, // #8E8E93
         tabBarStyle: {
           backgroundColor: colors.card, // #1C1C1E
-          borderTopColor: colors.border, // #2C2C2E
+          borderTopColor: colors.cardBorder, // #2C2C2E
           borderTopWidth: 1,
           height: 60 + insets.bottom, // SafeArea 하단 여백 추가
           paddingBottom: Math.max(insets.bottom, 8), // 안드로이드 하단 여백 처리
           paddingTop: 8,
+          paddingHorizontal: spacing.lg, // px-6 = 24px (Figma와 동일)
           // Shadow for iOS
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -4 },
@@ -56,23 +59,23 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="run"
+        name="records"
         options={{
-          title: '러닝',
+          title: '러닝 기록',
           tabBarIcon: ({ color, size }) => (
             <View style={styles.iconContainer}>
-              <MaterialCommunityIcons name="run" color={color} size={24} />
+              <MaterialCommunityIcons name="pulse" color={color} size={24} />
             </View>
           ),
         }}
       />
       <Tabs.Screen
-        name="records"
+        name="community"
         options={{
-          title: '기록',
+          title: '커뮤니티',
           tabBarIcon: ({ color, size }) => (
             <View style={styles.iconContainer}>
-              <MaterialCommunityIcons name="chart-line" color={color} size={24} />
+              <MaterialCommunityIcons name="account-group" color={color} size={24} />
             </View>
           ),
         }}
@@ -83,7 +86,7 @@ export default function TabsLayout() {
           title: '코스',
           tabBarIcon: ({ color, size }) => (
             <View style={styles.iconContainer}>
-              <MaterialCommunityIcons name="map" color={color} size={24} />
+              <MaterialCommunityIcons name="map-marker-path" color={color} size={24} />
             </View>
           ),
         }}
@@ -99,7 +102,14 @@ export default function TabsLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="run"
+        options={{
+          href: null, // 탭 바에서 숨김
+        }}
+      />
     </Tabs>
+    </RunSessionProvider>
     </AuthGuard>
   );
 }

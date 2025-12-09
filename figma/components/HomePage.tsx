@@ -1,6 +1,10 @@
-import { Clock, Zap, TrendingUp, MapPin, Award, Activity } from 'lucide-react';
+import { Clock, Zap, TrendingUp, MapPin, Award, Activity, Play } from 'lucide-react';
 
-export default function HomePage() {
+interface HomePageProps {
+  onStartRunning: () => void;
+}
+
+export default function HomePage({ onStartRunning }: HomePageProps) {
   return (
     <div className="flex flex-col gap-8 p-6 bg-[#0A0A0A]">
       {/* Header Row */}
@@ -23,6 +27,27 @@ export default function HomePage() {
           }}
         />
       </div>
+
+      {/* Start Running Button */}
+      <button 
+        onClick={onStartRunning}
+        className="w-full bg-gradient-to-r from-[#0A84FF] to-[#0066CC] rounded-[20px] py-5 flex items-center justify-center gap-3 active:opacity-90 transition-opacity"
+        style={{
+          boxShadow: '0 8px 24px rgba(10, 132, 255, 0.5)'
+        }}
+      >
+        <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+          <Play className="w-6 h-6 text-white" fill="white" />
+        </div>
+        <div className="flex flex-col items-start">
+          <span className="text-white text-[20px] tracking-[-0.01em]" style={{ fontWeight: 800 }}>
+            러닝 시작
+          </span>
+          <span className="text-white/80 text-[13px]" style={{ fontWeight: 500 }}>
+            지금 바로 달려보세요
+          </span>
+        </div>
+      </button>
 
       {/* Hero Card with Map/Image */}
       <div 

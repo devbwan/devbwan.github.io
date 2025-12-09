@@ -9,6 +9,9 @@ import AuthGuard from '../src/components/AuthGuard';
 import { useAppFonts } from '../src/utils/fontLoader';
 import { spacing, colors } from '../src/theme';
 
+// ⭐ RunSessionProvider 추가
+import { RunSessionProvider } from '../src/contexts/RunSessionContext';
+
 const theme = {
   ...DefaultTheme,
   colors: {
@@ -19,19 +22,11 @@ const theme = {
   roundness: 16,
   fonts: {
     ...DefaultTheme.fonts,
-    // 전체 앱 폰트를 Noto Sans KR로 통일
     default: Platform.select({
-      android: {
-        fontFamily: 'sans-serif-medium', // Android 기본 한글 폰트 (Noto Sans KR 기반)
-      },
-      ios: {
-        fontFamily: 'Apple SD Gothic Neo', // iOS 한글 폰트
-      },
-      web: {
-        fontFamily: '"Noto Sans KR", "Apple SD Gothic Neo", sans-serif',
-      },
+      android: { fontFamily: 'sans-serif-medium' },
+      ios: { fontFamily: 'Apple SD Gothic Neo' },
+      web: { fontFamily: '"Noto Sans KR", "Apple SD Gothic Neo", sans-serif' },
     }) || DefaultTheme.fonts.default,
-    // Button 텍스트 폰트 설정
     labelLarge: {
       ...DefaultTheme.fonts.labelLarge,
       fontFamily: Platform.select({
@@ -56,7 +51,6 @@ const theme = {
         web: '"Noto Sans KR", "Apple SD Gothic Neo", sans-serif',
       }) || DefaultTheme.fonts.labelSmall.fontFamily,
     },
-    // 추가 폰트 스타일
     bodyLarge: {
       ...DefaultTheme.fonts.bodyLarge,
       fontFamily: Platform.select({
@@ -108,7 +102,7 @@ const theme = {
   },
 };
 
-// 웹 환경에서 개발 모드 경고 억제 (라이브러리 내부 경고)
+// 웹 경고 억제
 if (Platform.OS === 'web' && typeof __DEV__ !== 'undefined' && __DEV__) {
   const originalWarn = console.warn;
   console.warn = (...args) => {
@@ -120,7 +114,6 @@ if (Platform.OS === 'web' && typeof __DEV__ !== 'undefined' && __DEV__) {
        message.includes('Cross-Origin-Opener-Policy') ||
        message.includes('window.closed'))
     ) {
-      // react-native-paper 내부 경고 및 COOP 경고는 무시 (로그인은 정상 작동)
       return;
     }
     originalWarn(...args);
@@ -131,7 +124,7 @@ export default function RootLayout() {
   const initialize = useAuthStore((state) => state.initialize);
   const isLoading = useAuthStore((state) => state.isLoading);
   const [initError, setInitError] = useState(null);
-  const { fontsLoaded, fontError } = useAppFonts();
+  const { fontsLoaded } = useAppFonts();
 
   useEffect(() => {
     console.log('[RootLayout] 초기화 시작');
@@ -147,7 +140,6 @@ export default function RootLayout() {
     init();
   }, [initialize]);
 
-  // 폰트 로딩 중이면 로딩 화면 표시
   if (!fontsLoaded) {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
@@ -155,9 +147,7 @@ export default function RootLayout() {
           <PaperProvider theme={theme}>
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
               <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={{ marginTop: spacing.md, color: colors.text, fontFamily: 'Inter-Regular' }}>
-                폰트를 로딩하는 중...
-              </Text>
+              <Text style={{ marginTop: spacing.md, color: colors.text }}>폰트를 로딩하는 중...</Text>
             </View>
           </PaperProvider>
         </SafeAreaProvider>
@@ -165,18 +155,14 @@ export default function RootLayout() {
     );
   }
 
-  // 초기화 중이면 로딩 화면 표시
   if (isLoading) {
-    console.log('[RootLayout] 로딩 중...');
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <PaperProvider theme={theme}>
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
               <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={{ marginTop: spacing.md, color: colors.text, fontFamily: 'Inter-Regular' }}>
-                앱을 시작하는 중...
-              </Text>
+              <Text style={{ marginTop: spacing.md, color: colors.text }}>앱을 시작하는 중...</Text>
             </View>
           </PaperProvider>
         </SafeAreaProvider>
@@ -184,18 +170,14 @@ export default function RootLayout() {
     );
   }
 
-  // 초기화 오류가 있으면 오류 화면 표시
   if (initError) {
-    console.error('[RootLayout] 초기화 오류 화면 표시:', initError);
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <PaperProvider theme={theme}>
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, padding: spacing.lg }}>
-              <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: spacing.md, color: colors.error, fontFamily: 'Inter-Bold' }}>
-                오류 발생
-              </Text>
-              <Text style={{ color: colors.text, textAlign: 'center', fontFamily: 'Inter-Regular' }}>{initError}</Text>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.background }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: spacing.md, color: colors.error }}>오류 발생</Text>
+              <Text style={{ color: colors.text, textAlign: 'center' }}>{initError}</Text>
             </View>
           </PaperProvider>
         </SafeAreaProvider>
@@ -204,17 +186,22 @@ export default function RootLayout() {
   }
 
   console.log('[RootLayout] 정상 렌더링');
+
+  // ⭐ 여기에서만 Provider를 추가해주면 됨
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <PaperProvider theme={theme}>
-          <AuthGuard requireAuth={false}>
-            <Slot />
-          </AuthGuard>
+
+          {/* ⭐ 전체 앱을 RunSessionProvider로 감싸기 */}
+          <RunSessionProvider>
+            <AuthGuard requireAuth={false}>
+              <Slot />
+            </AuthGuard>
+          </RunSessionProvider>
+
         </PaperProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
-
-

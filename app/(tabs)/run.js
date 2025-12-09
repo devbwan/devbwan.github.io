@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Platform, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Speech from 'expo-speech';
 import { 
@@ -14,12 +13,12 @@ import {
   checkRewards
 } from '../../src/features/run';
 import { useAuthStore } from '../../src/features/auth';
-import { getUserStats } from '../../src/features/stats';
-import { getUserRewards, saveReward } from '../../src/features/profile';
 import { getTodayStats } from '../../src/features/stats';
 import { RunMapView } from '../../src/components/MapView';
-import { PageContainer, Button, Card, Spacer, StatNumber, MapPreview } from '../../src/components/ui';
-import { colors, spacing, typography } from '../../src/theme';
+import { PageContainer, Button, Card, Spacer, StatNumber } from '../../src/components/ui';
+import { colors } from '../../src/theme/colors';
+import { spacing } from '../../src/theme/spacing';
+import { typography } from '../../src/theme/typography';
 
 export default function RunScreen() {
   const router = useRouter();
@@ -37,28 +36,69 @@ export default function RunScreen() {
     lng: 126.978,
   });
   const lastAnnouncedKm = useRef(0);
+  const autoStartTriggered = useRef(false);
+  const lastRunLoaded = useRef(false);
+  const redirectTriggered = useRef(false);
+  const locationLoaded = useRef(false);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      loadLastRun();
-      if (granted && permissionLoading === false) {
-        getCurrentLocation();
-      }
-    }, [granted, permissionLoading])
-  );
-
-  const loadLastRun = async () => {
+  const loadLastRun = React.useCallback(async () => {
+    // 이미 로드했거나 러닝 중이면 다시 로드하지 않음
+    if (lastRunLoaded.current || isRunning) {
+      return;
+    }
+    
     try {
       const stats = await getTodayStats(user?.id || null);
       if (stats.runs > 0) {
         setLastRunStats(stats);
       }
+      lastRunLoaded.current = true;
     } catch (error) {
       console.error('마지막 러닝 로드 실패:', error);
     }
-  };
+  }, [user?.id, isRunning]);
 
-  const getCurrentLocation = async () => {
+  // 모든 초기화 로직을 하나의 useFocusEffect로 통합
+  useFocusEffect(
+    React.useCallback(() => {
+      // 리다이렉트 처리 (한 번만 실행)
+      if (params.autoStart !== 'true' && !isRunning && !isPaused && !redirectTriggered.current) {
+        redirectTriggered.current = true;
+        router.replace('/run-start');
+        return; // 리다이렉트 후에는 다른 로직 실행하지 않음
+      }
+
+      // 리다이렉트가 필요한 경우가 아니면 나머지 로직 실행
+      if (params.autoStart === 'true' || isRunning || isPaused) {
+        // 마지막 러닝 로드 (한 번만 실행)
+        if (!isRunning && !isPaused && !lastRunLoaded.current) {
+          loadLastRun();
+        }
+
+        // 위치 권한 처리 (한 번만 실행)
+        if (granted && permissionLoading === false && !locationLoaded.current) {
+          getCurrentLocation();
+        }
+        
+        // autoStart 파라미터가 있고 아직 시작하지 않았으면 자동 시작
+        if (params.autoStart === 'true' && !autoStartTriggered.current && granted && !isRunning && !isPaused) {
+          autoStartTriggered.current = true;
+          setTimeout(() => {
+            if (granted && !isRunning && !isPaused) {
+              start();
+            }
+          }, 500);
+        }
+      }
+    }, [params.autoStart, isRunning, isPaused, granted, permissionLoading, loadLastRun, start, getCurrentLocation])
+  );
+
+  const getCurrentLocation = React.useCallback(async () => {
+    // 이미 로드했으면 다시 로드하지 않음
+    if (locationLoaded.current) {
+      return;
+    }
+    
     try {
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
@@ -68,10 +108,11 @@ export default function RunScreen() {
         lat: location.coords.latitude,
         lng: location.coords.longitude,
       });
+      locationLoaded.current = true;
     } catch (error) {
       console.error('[Run] 현재 위치 가져오기 실패:', error);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (isRunning && duration > 0 && distance > 0) {
@@ -216,11 +257,8 @@ export default function RunScreen() {
   };
 
   if (permissionLoading) {
-    return (
-      <PageContainer>
-        <Text style={styles.loadingText}>위치 권한을 확인하는 중...</Text>
-      </PageContainer>
-    );
+    const LoadingScreen = require('../../src/screens/LoadingScreen').default;
+    return <LoadingScreen />;
   }
 
   if (granted === false) {
@@ -234,68 +272,24 @@ export default function RunScreen() {
     );
   }
 
-  // RunStartScreen Layout
+  // RunStartScreen Layout - autoStart 파라미터가 없으면 러닝 준비 페이지로 리다이렉트 (useFocusEffect에서 처리)
+  // 러닝 중이 아니고 일시정지도 아닐 때만 준비 화면 표시
   if (!isRunning && !isPaused) {
-    return (
-      <PageContainer>
-        {lastRunStats && (
-          <>
-            <Card>
-              <View style={styles.lastRunStats}>
-                <StatNumber value={formatDistance(lastRunStats.distance)} label="거리" />
-                <StatNumber value={formatTime(lastRunStats.duration)} label="시간" />
-              </View>
-            </Card>
-            <Spacer height={spacing.lg} />
-          </>
-        )}
-        <Button fullWidth onPress={handleStart} disabled={saving}>
-          Start Running
-        </Button>
-      </PageContainer>
-    );
+    // autoStart 파라미터가 있지만 아직 시작되지 않은 경우 (권한 대기 등)
+    if (params.autoStart === 'true') {
+      const LoadingScreen = require('../../src/screens/LoadingScreen').default;
+      return <LoadingScreen />;
+    }
+    // autoStart 파라미터가 없으면 리다이렉트 중 (useFocusEffect에서 처리)
+    return null;
   }
 
-  // RunActiveScreen Layout
-  return (
-    <View style={styles.activeContainer}>
-      {/* Map Preview - full screen background */}
-      <View style={styles.mapContainer}>
-        <RunMapView 
-          route={isRunning ? route : []} 
-          currentLocation={isRunning && route.length > 0 ? route[route.length - 1] : null}
-          initialLocation={initialLocation}
-        />
-      </View>
-
-      {/* Stats and Controls - bottom overlay */}
-      <View style={styles.statsOverlay}>
-        <StatNumber value={formatTime(duration)} label="Time" />
-        <Spacer height={spacing.md} />
-        <StatNumber value={formatDistance(distance)} label="Distance" />
-        <Spacer height={spacing.md} />
-        <StatNumber value={formatPace(pace)} label="Pace" />
-
-        <Spacer height={spacing.xl} />
-
-        {isPaused ? (
-          <Button onPress={handleResume} disabled={saving}>
-            Resume
-          </Button>
-        ) : (
-          <Button onPress={handlePause} disabled={saving}>
-            Pause
-          </Button>
-        )}
-
-        <Spacer height={spacing.md} />
-
-        <Button onPress={handleStop} disabled={saving} loading={saving}>
-          End
-        </Button>
-      </View>
-    </View>
-  );
+  // autoStart 파라미터가 있거나 러닝 중이거나 일시정지 상태일 때 RunActiveScreen 표시
+  // RunActiveScreen은 이제 useRunSession을 사용하므로 props 전달 불필요
+  if (params.autoStart === 'true' || isRunning || isPaused) {
+    const RunActiveScreen = require('../../src/screens/RunActiveScreen').default;
+    return <RunActiveScreen />;
+  }
 }
 
 const styles = StyleSheet.create({

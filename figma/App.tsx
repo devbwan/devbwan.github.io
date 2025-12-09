@@ -1,22 +1,94 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Activity, Home, Users, Route, User, Zap } from 'lucide-react';
 import HomePage from './components/HomePage';
 import RunningPage from './components/RunningPage';
 import CommunityPage from './components/CommunityPage';
 import CoursePage from './components/CoursePage';
 import ProfilePage from './components/ProfilePage';
+import RunningPreparePage from './components/RunningPreparePage';
+import RunningActivePage from './components/RunningActivePage';
+import LoadingPage from './components/LoadingPage';
 import MobileHead from './components/MobileHead';
 
 type PageType = 'home' | 'running' | 'community' | 'course' | 'profile';
+type RunningState = 'idle' | 'prepare' | 'active';
 
 export default function App() {
+  const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState<PageType>('home');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [runningState, setRunningState] = useState<RunningState>('idle');
+
+  // Simulate loading
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 2500);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Show loading page
+  if (isLoading) {
+    return (
+      <>
+        <MobileHead />
+        <LoadingPage />
+      </>
+    );
+  }
+
+  const handleStartRunning = () => {
+    setRunningState('prepare');
+  };
+
+  const handleBeginRunning = () => {
+    setRunningState('active');
+  };
+
+  const handlePauseRunning = () => {
+    // Could add pause state here
+    console.log('Pause running');
+  };
+
+  const handleStopRunning = () => {
+    setRunningState('idle');
+    setCurrentPage('home');
+  };
+
+  const handleBackFromPrepare = () => {
+    setRunningState('idle');
+  };
+
+  // If in running prepare or active state, show those screens
+  if (runningState === 'prepare') {
+    return (
+      <>
+        <MobileHead />
+        <RunningPreparePage 
+          onStartRunning={handleBeginRunning}
+          onBack={handleBackFromPrepare}
+        />
+      </>
+    );
+  }
+
+  if (runningState === 'active') {
+    return (
+      <>
+        <MobileHead />
+        <RunningActivePage 
+          onPause={handlePauseRunning}
+          onStop={handleStopRunning}
+        />
+      </>
+    );
+  }
 
   const renderPage = () => {
     switch (currentPage) {
       case 'home':
-        return <HomePage />;
+        return <HomePage onStartRunning={handleStartRunning} />;
       case 'running':
         return <RunningPage />;
       case 'community':
@@ -26,7 +98,7 @@ export default function App() {
       case 'profile':
         return <ProfilePage isLoggedIn={isLoggedIn} onLogin={() => setIsLoggedIn(true)} onLogout={() => setIsLoggedIn(false)} />;
       default:
-        return <HomePage />;
+        return <HomePage onStartRunning={handleStartRunning} />;
     }
   };
 
